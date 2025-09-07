@@ -1,12 +1,3 @@
-{-# LANGUAGE CPP #-}
-
--- Because Data.Default import is unsafe in GHC 8.0.x
-#ifdef SDP_DEFAULT_SAFETY
-{-# LANGUAGE Safe #-}
-#else
-{-# LANGUAGE Trustworthy #-}
-#endif
-
 {- |
     Module      :  Text.Read.SDP
     Copyright   :  (c) Andrey Mulik 2019-2022
@@ -33,7 +24,7 @@ module Text.Read.SDP
   allPrec, allPrecWith, expectPrec, namedPrec,
   
   -- * Generalized readers
-  readDef, readBy, readMaybeBy, readEitherBy, readDefBy,
+  readBy, readMaybeBy, readEitherBy,
   
   -- * Enum parsers
   readAsEnum, enumFromPrec, enumFromToPrec, enumFromThenPrec, enumFromThenToPrec
@@ -43,8 +34,6 @@ where
 import Prelude ()
 import SDP.SafePrelude
 import SDP.Indexed
-
-import Data.Default
 
 import Text.ParserCombinators.ReadP ( eof, manyTill, skipSpaces )
 import Text.Read.Lex ( expect )
@@ -194,14 +183,6 @@ namedPrec parser name =
 
 --------------------------------------------------------------------------------
 
--- | 'read' with implicit default value.
-readDef :: (Read e, Default e) => String -> e
-readDef =  (def +?) . readMaybe
-
--- | 'readBy' with implicit default value.
-readDefBy :: (Default e) => ReadPrec e -> String -> e
-readDefBy =  (def +?) ... readMaybeBy
-
 -- | 'readBy' is generalized 'read'.
 readBy :: ReadPrec e -> String -> e
 readBy parser string = either error id $ readEitherBy parser string
@@ -254,7 +235,6 @@ parens' parser = do
   expectPrec (Punc "[")
   value <- parser
   value <$ expectPrec (Punc "]")
-
 
 
 

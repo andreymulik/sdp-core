@@ -35,8 +35,6 @@ where
 import SDP.Nullable
 
 import Data.Bifunctor
-import Data.Typeable
-import Data.Default
 import Data.Data
 
 import GHC.Generics
@@ -55,9 +53,7 @@ default ()
 {- Zero-dimensional type. -}
 
 -- | Service type, that represents zero-dimensional index.
-data E = E deriving ( Eq, Ord, Show, Read, Typeable, Data, Generic )
-
-instance Default E where def = E
+data E = E deriving ( Eq, Ord, Show, Read, Data, Generic )
 
 instance IsList E
   where
@@ -77,7 +73,7 @@ instance Nullable E where lzero = E; isNull = const True
   N-dimensional index type. The type (head :& tail) allows working with any
   finite dimension number.
 -}
-data tail :& head = !tail :& !head deriving ( Eq, Ord, Typeable, Data, Generic )
+data tail :& head = !tail :& !head deriving ( Eq, Ord, Data, Generic )
 
 instance Enum i => Enum (E :& i)
   where
@@ -91,8 +87,6 @@ instance Enum i => Enum (E :& i)
     enumFromTo         (E :& f) (E :& l)      = (E :&) <$> [f .. l]
     enumFromThen       (E :& f)  (E :& n)     = (E :&) <$> [f, n ..]
     enumFromThenTo (E :& f) (E :& n) (E :& l) = (E :&) <$> [f, n .. l]
-
-instance (Default d, Default d') => Default (d :& d') where def = def :& def
 
 --------------------------------------------------------------------------------
 
@@ -206,5 +200,6 @@ unsnoc :: [i] -> ([i], i)
 unsnoc    [i]   = ([], i)
 unsnoc (i : is) = (i :) `first` unsnoc is
 unsnoc     _    = throw $ UnexpectedRank "in SDP.Finite.fromList"
+
 
 

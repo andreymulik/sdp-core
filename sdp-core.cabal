@@ -19,24 +19,45 @@ cabal-version: >=1.10
 tested-with:
   -- lts-7.0
   GHC == 8.0.1,
+  
   -- lts-7.24
   GHC == 8.0.1,
+  
   -- lts-9.21
   GHC == 8.0.2,
+  
   -- lts-11.22
   GHC == 8.2.2,
-  -- lts-12.26
-  GHC == 8.4.4,
+  
   -- lts-14.27
   GHC == 8.6.5,
-  -- lts-18.8
-  GHC == 8.10.6,
-  -- lts-18.24
+  
+  -- lts-16.31
+  GHC == 8.8.4,
+  
+  -- lts-18.28
   GHC == 8.10.7,
-  -- lts-19.21
+  
+  -- lts-19.33
   GHC == 9.0.2,
-  -- nightly-2022-09-04
-  GHC == 9.2.4
+  
+  -- lts-20.26
+  GHC == 9.2.8,
+  
+  -- lts-21.25
+  GHC == 9.4.8,
+  
+  -- lts-22.44
+  GHC == 9.6.7,
+  
+  -- lts-23.28
+  GHC == 9.8.4,
+  
+  -- lts-24.9
+  GHC == 9.10.2,
+  
+  -- nightly-2025-09-06
+  GHC == 9.12.2
 
 source-repository head
   type: git
@@ -59,17 +80,12 @@ Library
                -pgmPcpphs -optP--cpp -optP-traditional
   
   build-depends:
-    base         >= 4.9 && <    5,
-    ghc-prim     >= 0.5 && < 0.14,
-    data-default >= 0.7 && <  0.9
+    base     >= 4.9 && <    5,
+    ghc-prim >= 0.5 && < 0.14
   
   -- GHC 8.2.2 bug
   if impl(ghc >= 8.4)
     cpp-options: -DSDP_LINEAR_EXTRAS
-  
-  -- GHC-8.0.x bug
-  if impl(ghc >= 8.2)
-    cpp-options: -DSDP_DEFAULT_SAFETY
   
   if impl(ghc >= 8.6)
     cpp-options: -DSDP_QUALIFIED_CONSTRAINTS
@@ -130,6 +146,5 @@ Library
     
     -- Unboxed class with instances
     SDP.Unboxed.Class
-
 
 
