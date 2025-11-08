@@ -4,28 +4,20 @@ It's core package for `sdp`. Check the list of packages below.
 
 ## What's the point?
 
-SDP is a way to work with data in a unified way. What used to be similar
-functions with more or less the same behavior becomes a set of classes with
-clear rules and restrictions.
+SDP is a unified way to work with data types from different packages. For
+example, `base`, `array`, `vector`, `bytestring`, and `text` have many
+overlapping function names with similar or identical behavior. SDP creates a
+compatibility layer between them and re-exports modules, resolving name
+conflicts. SDP supports `base >= 4.`9, also resolving several library version
+compatibility issues.
 
-Initially, `sdp` was created as a replacement for the standard `array` package,
-with more functions and not requiring qualified imports.
-
-In version `sdp-0.2`, the package contained many structures and classes that
-were added to the main package to solve specific problems. This was justified
-while I was studying at the university, because I had a lot of free time.
-In the end, this complicated the support and development of the library, and I
-abandoned it for a very long time. Now I am splitting it into several packages
-to simplify the development process and gradually develop the project to solve
-current problems.
-
-In version 0.3 I partly returned to the old idea - the priority of modularity
-over basic functionality. `sdp-core-0.3` will contain only basic classes and
-some helping tools (for example, my implementation of TimSort).
+In `sdp-0.2`, the core package provided classes and native data types. Since
+version `sdp-0.3`, the classes have been separated into the `sdp-core` package,
+which inherits version `0.3`.
 
 ## Quick start
 
-sdp-core is a set of classes that solve problems with qualified imports.
+`sdp-core` is a set of classes that solve problems with qualified imports.
 To start using the library, add the following lines to your module:
 
 ```haskell
@@ -154,7 +146,7 @@ opposite with `sdp-core-0.3`.
 The technical reason is that I don't need extra dependencies in the base package.
 
 And frankly, I don't see any real use cases for the containers package in any of
-my projects. So for me it's just a garbage package dependency.
+my projects. So for me it's just a useless dependency.
 
 > Perfection is finally attained not when there is no longer anything to add, but when there is no longer anything to take away (c) Antoine de Saint-Exupéry
 
