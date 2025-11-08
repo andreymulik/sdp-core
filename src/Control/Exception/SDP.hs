@@ -23,7 +23,6 @@ where
 import Prelude ( Eq (..), Show (..), String, (++) )
 
 import Control.Exception
-import Data.Typeable
 
 default ()
 
@@ -54,22 +53,24 @@ default ()
   if an overflow is detected, underflow may not be noticed. 'IndexException'
   constructor order is the recommended order.
 -}
-data IndexException = UnacceptableExpansion String
-                    | UndefinedValue        String
-                    | UnexpectedRank        String
-                    | IndexUnderflow        String
-                    | IndexOverflow         String
-                    | EmptyRange            String
-  deriving ( Eq, Typeable )
+data IndexException = InapplicableBoundaries String
+                    | UnacceptableExpansion  String
+                    | UndefinedValue         String
+                    | UnexpectedRank         String
+                    | IndexUnderflow         String
+                    | IndexOverflow          String
+                    | EmptyRange             String
+  deriving ( Eq )
 
 instance Show IndexException
   where
-    show (UnacceptableExpansion s) = "unacceptable expansion "   ++ s
-    show (UndefinedValue        s) = "undefined element "        ++ s
-    show (UnexpectedRank        s) = "unexpected rank "          ++ s
-    show (IndexUnderflow        s) = "index out of lower bound " ++ s
-    show (IndexOverflow         s) = "index out of upper bound " ++ s
-    show (EmptyRange            s) = "empty range "              ++ s
+    show (InapplicableBoundaries s) = "inapplicable boundaries "  ++ s
+    show (UnacceptableExpansion  s) = "unacceptable expansion "   ++ s
+    show (UndefinedValue         s) = "undefined element "        ++ s
+    show (UnexpectedRank         s) = "unexpected rank "          ++ s
+    show (IndexUnderflow         s) = "index out of lower bound " ++ s
+    show (IndexOverflow          s) = "index out of upper bound " ++ s
+    show (EmptyRange             s) = "empty range "              ++ s
 
 instance Exception IndexException
 
@@ -84,8 +85,7 @@ instance Exception IndexException
   'UnreachableException' as the second element of the default tuple that
   compared with other tuples by 'cmpfst' and will never be returned.
 -}
-newtype UnreachableException = UnreachableException String
-  deriving ( Eq, Typeable )
+newtype UnreachableException = UnreachableException String deriving ( Eq )
 
 instance Show UnreachableException
   where

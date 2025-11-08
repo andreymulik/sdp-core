@@ -12,8 +12,13 @@
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
     
-    "SDP.Estimate" provides 'Estimate' and 'EstimateM' classes, type synonyms
-    and some common comparators.
+    The "SDP.Estimate" class provides the 'Estimate' and 'EstimateM' classes for
+    short-circuit comparisons of the sizes of structures among themselves and
+    with a known number.
+    
+    Saves time for lazy structs (and eternity for infinite) if all you need to
+    know is "is the struct longer than 5 elements?", "are the sizes of these two
+    structs equal?", or "does this struct have exactly 2 elements?".
     
     This module is exported by "SDP.SafePrelude".
 -}
@@ -35,18 +40,13 @@ module SDP.Estimate
   (<=.>), (<.), (>.), (<=.), (>=.), (==.), (/=.),
   
   -- * EstimateM
-  EstimateM (..), EstimateM1, EstimateM2, restimateM,
+  EstimateM (..), EstimateM1, EstimateM2,
   
 #ifdef SDP_QUALIFIED_CONSTRAINTS
   -- ** Rank 2 quantified constraints
   -- | GHC 8.6.1+ only
-  EstimateM', EstimateM'',
+  EstimateM', EstimateM''
 #endif
-  
-  -- ** Right-side EstimateM functions
-  restimateMLT, restimateMGT,
-  restimateMLE, restimateMGE,
-  restimateMEQ, restimateMNE
 )
 where
 
@@ -62,10 +62,8 @@ infixl 4 <==>, .<., .>., .<=., .>=., .==., ./=.,
          <.=>, .<, .>, .<=, .>=, .==, ./=,
          <=.>, <., >., <=., >=., ==., /=.
 
-infixl 4 `lestimateMLT`, `lestimateMGT`, `lestimateMLE`, `lestimateMGE`,
-         `restimateMLT`, `restimateMGT`, `restimateMLE`, `restimateMGE`,
-         `lestimateMEQ`, `lestimateMNE`, `restimateMEQ`, `restimateMNE`,
-         `estimateM`, `lestimateM`, `restimateM`
+infixl 4 <<=>>, `shorterThanM`, `longerThanM`, `hasLengthM`, `otherLengthM`,
+         <=>>,  `noLongerThanM`, `notShorterThanM`
 
 --------------------------------------------------------------------------------
 
@@ -158,62 +156,36 @@ class Monad m => EstimateM m e
     getSizeOf =  return . sizeOf
     
     -- | Compare pair of structures by length.
-    default estimateM :: Estimate e => e -> e -> m Ordering
-    estimateM :: e -> e -> m Ordering
-    estimateM =  return ... (<==>)
+    default (<<=>>) :: Estimate e => e -> e -> m Ordering
+    (<<=>>) :: e -> e -> m Ordering
+    (<<=>>) =  return ... (<==>)
     
     -- | Compare structure length with given number.
-    default lestimateM :: Estimate e => e -> Int -> m Ordering
-    lestimateM :: e -> Int -> m Ordering
-    lestimateM =  return ... (<.=>)
+    default (<=>>) :: Estimate e => e -> Int -> m Ordering
+    (<=>>) :: e -> Int -> m Ordering
+    (<=>>) =  return ... (<.=>)
     
     -- | Compare structure length with given number.
-    lestimateMLT :: e -> Int -> m Bool
-    lestimateMLT e i = (== LT) <$> lestimateM e i
+    shorterThanM, longerThanM, noLongerThanM, notShorterThanM,
+      hasLengthM, otherLengthM :: e -> Int -> m Bool
     
-    -- | Compare structure length with given number.
-    lestimateMGT :: e -> Int -> m Bool
-    lestimateMGT e i = (== GT) <$> lestimateM e i
-    
-    -- | Compare structure length with given number.
-    lestimateMLE :: e -> Int -> m Bool
-    lestimateMLE e i = (/= GT) <$> lestimateM e i
-    
-    -- | Compare structure length with given number.
-    lestimateMGE :: e -> Int -> m Bool
-    lestimateMGE e i = (/= LT) <$> lestimateM e i
-    
-    -- | Compare structure length with given number.
-    lestimateMEQ :: e -> Int -> m Bool
-    lestimateMEQ e i = (== EQ) <$> lestimateM e i
-    
-    -- | Compare structure length with given number.
-    lestimateMNE :: e -> Int -> m Bool
-    lestimateMNE e i = (/= EQ) <$> lestimateM e i
+    shorterThanM    e i = fmap (== LT) (e <=>> i)
+    longerThanM     e i = fmap (== GT) (e <=>> i)
+    noLongerThanM   e i = fmap (/= GT) (e <=>> i)
+    notShorterThanM e i = fmap (/= LT) (e <=>> i)
+    hasLengthM      e i = fmap (== EQ) (e <=>> i)
+    otherLengthM    e i = fmap (/= EQ) (e <=>> i)
     
     -- | Compare pair of structures by length.
-    estimateMLT :: e -> e -> m Bool
-    estimateMLT e1 e2 = (== LT) <$> estimateM e1 e2
+    estimateMLT, estimateMGT, estimateMLE, estimateMGE,
+      estimateMEQ, estimateMNE :: e -> e -> m Bool
     
-    -- | Compare pair of structures by length.
-    estimateMGT :: e -> e -> m Bool
-    estimateMGT e1 e2 = (== GT) <$> estimateM e1 e2
-    
-    -- | Compare pair of structures by length.
-    estimateMLE :: e -> e -> m Bool
-    estimateMLE e1 e2 = (/= GT) <$> estimateM e1 e2
-    
-    -- | Compare pair of structures by length.
-    estimateMGE :: e -> e -> m Bool
-    estimateMGE e1 e2 = (/= LT) <$> estimateM e1 e2
-    
-    -- | Compare pair of structures by length.
-    estimateMEQ :: e -> e -> m Bool
-    estimateMEQ e1 e2 = (== EQ) <$> estimateM e1 e2
-    
-    -- | Compare pair of structures by length.
-    estimateMNE :: e -> e -> m Bool
-    estimateMNE e1 e2 = (/= EQ) <$> estimateM e1 e2
+    estimateMLT e1 e2 = fmap (== LT) (e1 <<=>> e2)
+    estimateMGT e1 e2 = fmap (== GT) (e1 <<=>> e2)
+    estimateMLE e1 e2 = fmap (/= GT) (e1 <<=>> e2)
+    estimateMGE e1 e2 = fmap (/= LT) (e1 <<=>> e2)
+    estimateMEQ e1 e2 = fmap (== EQ) (e1 <<=>> e2)
+    estimateMNE e1 e2 = fmap (/= EQ) (e1 <<=>> e2)
 
 --------------------------------------------------------------------------------
 
@@ -270,86 +242,14 @@ type EstimateM'' m rep = forall i e . EstimateM m (rep i e)
 i <=.> e = case e <.=> i of {LT -> GT; EQ -> EQ; GT -> LT}
 
 -- | Compare given number with structure length.
-(==.) :: Estimate e => Int -> e -> Bool
-(==.) =  flip (.==)
+(==.), (/=.), (<=.), (>=.), (<.), (>.) :: Estimate e => Int -> e -> Bool
 
--- | Compare given number with structure length.
-(/=.) :: Estimate e => Int -> e -> Bool
-(/=.) =  flip (./=)
-
--- | Compare given number with structure length.
-(<=.) :: Estimate e => Int -> e -> Bool
-(<=.) =  flip (.>=)
-
--- | Compare given number with structure length.
-(>=.) :: Estimate e => Int -> e -> Bool
-(>=.) =  flip (.<=)
-
--- | Compare given number with structure length.
-(<.) :: Estimate e => Int -> e -> Bool
-(<.)  =  flip (.>)
-
--- | Compare given number with structure length.
-(>.) :: Estimate e => Int -> e -> Bool
-(>.)  =  flip (.<)
-
---------------------------------------------------------------------------------
-
-{- |
-  @since 0.3
-  
-  Compare given number with structure length.
--}
-restimateM :: EstimateM m e => Int -> e -> m Ordering
-restimateM i e = (\ b -> case b of {LT -> GT; EQ -> EQ; GT -> LT}) <$> lestimateM e i
-
-{- |
-  @since 0.3
-  
-  Compare given number with structure length.
--}
-restimateMLT :: EstimateM m e => Int -> e -> m Bool
-restimateMLT =  flip lestimateMLT
-
-{- |
-  @since 0.3
-  
-  Compare given number with structure length.
--}
-restimateMGT :: EstimateM m e => Int -> e -> m Bool
-restimateMGT =  flip lestimateMGT
-
-{- |
-  @since 0.3
-  
-  Compare given number with structure length.
--}
-restimateMLE :: EstimateM m e => Int -> e -> m Bool
-restimateMLE =  flip lestimateMLE
-
-{- |
-  @since 0.3
-  
-  Compare given number with structure length.
--}
-restimateMGE :: EstimateM m e => Int -> e -> m Bool
-restimateMGE =  flip lestimateMGE
-
-{- |
-  @since 0.3
-  
-  Compare given number with structure length.
--}
-restimateMEQ :: EstimateM m e => Int -> e -> m Bool
-restimateMEQ =  flip lestimateMEQ
-
-{- |
-  @since 0.3
-  
-  Compare given number with structure length.
--}
-restimateMNE :: EstimateM m e => Int -> e -> m Bool
-restimateMNE =  flip lestimateMNE
+(==.) = flip (.==)
+(/=.) = flip (./=)
+(<=.) = flip (.>=)
+(>=.) = flip (.<=)
+(<.)  = flip (.>)
+(>.)  = flip (.<)
 
 --------------------------------------------------------------------------------
 
@@ -375,19 +275,21 @@ instance (Monad m, Index i) => EstimateM m (i, i)
     getSizeOf   = return . size
     getSizeHint = return . Just . SizeHintEQ . size
     
-    estimateM   = return ... on (<=>) size
+    (<<=>>) = return ... on (<=>) size
+    (<=>>)  = return ... (<=>) . size
+    
     estimateMEQ = return ... on (==)  size
     estimateMLE = return ... on (<=)  size
     estimateMGE = return ... on (>=)  size
     estimateMLT = return ... on (<)   size
     estimateMGT = return ... on (>)   size
     
-    lestimateM   = return ... (<=>) . size
-    lestimateMEQ = return ... (==)  . size
-    lestimateMLE = return ... (<=)  . size
-    lestimateMGE = return ... (>=)  . size
-    lestimateMLT = return ... (<)   . size
-    lestimateMGT = return ... (>)   . size
+    hasLengthM      = return ... (==)  . size
+    otherLengthM    = return ... (/=)  . size
+    longerThanM     = return ... (>)   . size
+    shorterThanM    = return ... (<)   . size
+    noLongerThanM   = return ... (<=)  . size
+    notShorterThanM = return ... (>=)  . size
 
 --------------------------------------------------------------------------------
 
@@ -415,6 +317,9 @@ instance Monad m => EstimateM m [a]
     getSizeOf   = return . length
     getSizeHint = return . sizeHint
     
-    estimateM  = return ... (<==>)
-    lestimateM = return ... (<.=>)
+    (<<=>>) = return ... (<==>)
+    (<=>>)  = return ... (<.=>)
+
+
+
 

@@ -26,7 +26,7 @@ default ()
 
 -- | 'insertionSort' is just synonym for @'insertionSortBy' 'compare'@.
 {-# INLINE insertionSort #-}
-insertionSort :: (LinearM m v e, BorderedM m v i, Ord e) => v -> m ()
+insertionSort :: (MonadFail m, LinearM m v e, BorderedM m v i, Ord e) => v -> m ()
 insertionSort =  insertionSortBy compare
 
 {- |
@@ -34,7 +34,7 @@ insertionSort =  insertionSortBy compare
   to 'compare' elements.
 -}
 {-# INLINE insertionSortOn #-}
-insertionSortOn :: (LinearM m v e, BorderedM m v i, Ord o) => (e -> o) -> v -> m ()
+insertionSortOn :: (MonadFail m, LinearM m v e, BorderedM m v i, Ord o) => (e -> o) -> v -> m ()
 insertionSortOn =  insertionSortBy . comparing
 
 {- |
@@ -42,7 +42,7 @@ insertionSortOn =  insertionSortBy . comparing
   complexity in all cases.
 -}
 {-# INLINE insertionSortBy #-}
-insertionSortBy :: (LinearM m v e, BorderedM m v i) => Compare e -> v -> m ()
+insertionSortBy :: (MonadFail m, LinearM m v e, BorderedM m v i) => Compare e -> v -> m ()
 insertionSortBy cmp es = do n <- getSizeOf es; unsafeInsertionSort cmp es 0 0 (n - 1)
 
 --------------------------------------------------------------------------------
@@ -52,13 +52,13 @@ insertionSortBy cmp es = do n <- getSizeOf es; unsafeInsertionSort cmp es 0 0 (n
   @cmp@ - compare function, @es@ - data structure, @[b .. s]@ - sorted range,
   @[b .. e]@ - sortable range.
 -}
-unsafeInsertionSort :: (LinearM m v e) => Compare e -> v -> Int -> Int -> Int -> m ()
+unsafeInsertionSort :: (MonadFail m, LinearM m v e) => Compare e -> v -> Int -> Int -> Int -> m ()
 unsafeInsertionSort cmp es b s e = forM_ [s + 1 .. e] $ \ i -> do
-  ei <- es !#> i
+  ei <- es !* i
   let
     next' l u j = l > u ? return j $ do
       let c = (l + u) `div` 2
-      ec <- es !#> c
+      ec <- es !* c
       case ei `cmp` ec of
         GT -> next' (c + 1) u j
         LT -> next' l (c - 1) c

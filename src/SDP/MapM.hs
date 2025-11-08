@@ -210,7 +210,7 @@ class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
       
       Earlier defined in "SDP.IndexedM".
     -}
-    default writeM' :: (BorderedM m map key, LinearM m map e)
+    default writeM' :: (BorderedM m map key, LinearM m map e, MonadFail m)
                     => map -> key -> e -> m ()
     
     writeM' :: map -> key -> e -> m ()

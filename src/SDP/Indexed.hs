@@ -23,7 +23,7 @@ module SDP.Indexed
   module SDP.Map,
   
   -- * Indexed
-  Indexed (..), Indexed1, Indexed2, binaryContain, memberSorted,
+  Indexed (..), Indexed1, Indexed2,
   
   -- * Freeze
   Freeze (..), Freeze1, Freeze2,
@@ -50,47 +50,40 @@ default ()
 
 --------------------------------------------------------------------------------
 
-{-# DEPRECATED imap "deprecated in favour 'SDP.Indexed.Indexed.imap', \
-      \will be removed in sdp-0.4" #-}
-
 -- | 'Indexed' is class of ordered associative arrays with static bounds.
-class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i, v -> e
+class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i e
   where
     {-# MINIMAL fromIndexed #-}
     
     {- |
-      @assoc bnds ascs@ create new structure from list of associations, without
-      default element. Note that @bnds@ is @ascs@ bounds and may not match with
-      the result bounds (not always possible).
+      @assoc bnds ascs@ create new structure from list of @(key, value)@ pairs,
+      without default element. Note that @bnds@ is @ascs@ bounds and may not
+      match with the result bounds (not always possible).
     -}
     assoc :: (i, i) -> [(i, e)] -> v
-    assoc =  flip assoc' (undEx "assoc {default}")
+    assoc =  assoc' (undEx "assoc {default}")
     
     {- |
-      @assoc' bnds def ascs@ creates new structure from list of associations
+      @assoc' def bnds ascs@ creates new structure from list of associations
       with default element. Note that @bnds@ is @ascs@ bounds and may not match
       with the result bounds (not always possible).
     -}
-    assoc' :: (i, i) -> e -> [(i, e)] -> v
-    assoc' bnds defvalue = toMap' defvalue . filter (inRange bnds . fst)
+    assoc' :: e -> (i, i) -> [(i, e)] -> v
+    assoc' def bnds = toMap' def . filter (inRange bnds . fst)
     
     -- | 'fromIndexed' converts this indexed structure to another one.
     fromIndexed :: Indexed m j e => m -> v
     
-    -- | Same as 'reshape', deprecated.
-    imap :: Map m j e => (i, i) -> m -> (i -> j) -> v
-    imap bnds es f = assoc bnds [ (i, es!f i) | i <- range bnds ]
-    
-    -- | 'reshape' creates new indexed structure from old with reshaping.
-    reshape :: Indexed v' j e => (i, i) -> v' -> (i -> j) -> v
-    reshape =  imap
+    -- | 'reshape' creates new structure with index mapping.
+    reshape :: Indexed src j e => (i, i) -> src -> (i -> j) -> v
+    reshape bnds es f = assoc bnds [ (i, es!j) | i <- range bnds, let j = f i ]
     
     {- |
       @'accum' f es ies@ create a new structure from @es@ elements selectively
       updated by function @f@ and @ies@ associations list.
     -}
     accum :: (e -> e' -> e) -> v -> [(i, e')] -> v
-    accum f es ies = bounds es `assoc` [ (i, es!i `f` e') | (i, e') <- ies ]
+    accum f es ascs = bounds es `assoc` [ (i, es!i `f` e') | (i, e') <- ascs ]
     
     {- |
       @since 0.3
@@ -174,6 +167,13 @@ class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i, v -> e
 
 --------------------------------------------------------------------------------
 
+instance Indexed [e] Int e
+  where
+    assoc'  e bnds = toMap' e . filter (inRange bnds . fst)
+    fromIndexed es = (es !) <$> indices es
+
+--------------------------------------------------------------------------------
+
 -- | Service class of mutable to immutable conversions.
 class Monad m => Freeze m v' v | v' -> m
   where
@@ -224,14 +224,7 @@ type Freeze'' m v' v = forall i e . Freeze m (v' i e) (v i e)
 
 --------------------------------------------------------------------------------
 
-instance Indexed [e] Int e
-  where
-    assoc' bnds  e = toMap' e . filter (inRange bnds . fst)
-    fromIndexed es = (es !) <$> indices es
-
---------------------------------------------------------------------------------
-
--- | Split the list and return the good producer of the resulting chunks.
+-- | Split the list and return the resulting chunks.
 unpick :: Int -> (i -> Int) -> [(i, e)] -> [(i, [e])]
 unpick (I# n#) f es = runST $ ST $ \ s1# -> case newArray# n# [] s1# of
   (# s2#, marr# #) -> case newArray# n# (undEx "unpick") s2# of
@@ -252,29 +245,6 @@ unpick (I# n#) f es = runST $ ST $ \ s1# -> case newArray# n# [] s1# of
                     in  go (c# -# 1#) ((i, reverse xs) : xss)
               in  (# s6#, go (n# -# 1#) [] #)
 
-{-# DEPRECATED binaryContain "deprecated in favour 'SDP.Indexed.memberSorted' \
-      \will be removed in sdp-0.4" #-}
-
--- | 'binaryContain' checks that sorted structure has equal element.
-binaryContain :: (Linear v e, Bordered v i) => Compare e -> e -> v -> Bool
-binaryContain _ _  Z = False
-binaryContain f e es =
-  let
-    contain l u = not (l > u) && case f e (es !^ j) of
-        LT -> contain l (j - 1)
-        EQ -> True
-        GT -> contain (j + 1) u
-      where
-        j = u - l `div` 2 + l
-  in  f e (head es) /= LT && f e (last es) /= GT && contain 0 (sizeOf es - 1)
-
---------------------------------------------------------------------------------
-
--- | 'memberSorted' checks that sorted structure has equal element.
-memberSorted :: Indexed v i e => Compare e -> e -> v -> Bool
-memberSorted =  binaryContain
-
 undEx :: String -> a
 undEx =  throw . UndefinedValue . showString "in SDP.Indexed."
-
 

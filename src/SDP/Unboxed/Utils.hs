@@ -53,9 +53,9 @@ default ()
 {-# INLINE shiftWI# #-}
 shiftWI# :: Word# -> Word#
 #if SIZEOF_HSWORD == 4
-shiftWI# =  xor# (0x01## `shiftL#` 31#)
+shiftWI# =  xor# 0x80000000##
 #else
-shiftWI# =  xor# (0x01## `shiftL#` 63#)
+shiftWI# =  xor# 0x8000000000000000##
 #endif
 
 {- |
@@ -84,10 +84,10 @@ shift16WI# =  xor# 0x8000##
 {-# INLINE shift32WI# #-}
 #if MIN_VERSION_base(4,16,0)
 shift32WI# :: Word32# -> Word32#
-shift32WI# =  xorWord32# (wordToWord32# (0x01## `shiftL#` 31#))
+shift32WI# =  xorWord32# (wordToWord32# 0x80000000##)
 #else
 shift32WI# :: Word# -> Word#
-shift32WI# =  xor# (0x01## `shiftL#` 31#)
+shift32WI# =  xor# 0x80000000##
 #endif
 
 {- |
@@ -103,7 +103,7 @@ shift64WI# :: Word64# -> Word64#
 shift64WI# = xor64# (wordToWord64# 0x01## `uncheckedShiftL64#` 63#)
 #else
 shift64WI# :: Word# -> Word#
-shift64WI# = xor# (0x01## `shiftL#` 63#)
+shift64WI# = xor# 0x8000000000000000##
 #endif
 
 --------------------------------------------------------------------------------

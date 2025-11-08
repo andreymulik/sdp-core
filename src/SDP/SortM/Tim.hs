@@ -30,7 +30,7 @@ default ()
 
 -- | 'timSort' is just synonym for @'timSortBy' 'compare'@.
 {-# INLINE timSort #-}
-timSort :: (LinearM m v e, BorderedM m v i, Ord e) => v -> m ()
+timSort :: (MonadFail m, LinearM m v e, BorderedM m v i, Ord e) => v -> m ()
 timSort =  timSortBy compare
 
 {- |
@@ -38,7 +38,7 @@ timSort =  timSortBy compare
   compare elements.
 -}
 {-# INLINE timSortOn #-}
-timSortOn :: (LinearM m v e, BorderedM m v i, Ord o) => (e -> o) -> v -> m ()
+timSortOn :: (MonadFail m, LinearM m v e, BorderedM m v i, Ord o) => (e -> o) -> v -> m ()
 timSortOn =  timSortBy . comparing
 
 {- |
@@ -47,7 +47,7 @@ timSortOn =  timSortBy . comparing
   case.
 -}
 {-# INLINE timSortBy #-}
-timSortBy :: (LinearM m v e, BorderedM m v i) => Compare e -> v -> m ()
+timSortBy :: (MonadFail m, LinearM m v e, BorderedM m v i) => Compare e -> v -> m ()
 timSortBy cmp es = sort' =<< getSizeOf es
   where
     gt = \ x y -> case cmp x y of {GT -> True; _ -> False}
@@ -70,19 +70,19 @@ timSortBy cmp es = sort' =<< getSizeOf es
               0 -> return []
               1 -> return [1]
               2 -> do
-                e0 <- es !#> o
-                e1 <- es !#> o + 1
+                e0 <- es !* o
+                e1 <- es !* o + 1
                 when (e0 `gt` e1) $ swapM es o (o + 1)
                 return [2]
               _ -> do
                 end <- normalized =<< actual
                 end == 0 ? return [end - o] $ (end - o :) <$> iteratePreN (j - 1) end
             where
-              actual = (es !#> o) >>=<< (es !#> o + 1) $ \ e0 e1 ->
+              actual = (es !* o) >>=<< (es !* o + 1) $ \ e0 e1 ->
                   e0 `gt` e1 ? desc e1 (o + 2) $ asc e1 (o + 2)
                 where
-                  desc p i = do c <- es !#> i; c `gt` p ? rev' o i $ i /= n - 1 ? desc c (i + 1) $ rev' o (i + 1)
-                  asc  p i = do c <- es !#> i; p `gt` c ? return i $ i /= n - 1 ? asc  c (i + 1) $ return (i + 1)
+                  desc p i = do c <- es !* i; c `gt` p ? rev' o i $ i /= n - 1 ? desc c (i + 1) $ rev' o (i + 1)
+                  asc  p i = do c <- es !* i; p `gt` c ? return i $ i /= n - 1 ? asc  c (i + 1) $ return (i + 1)
                   rev  f l = when (f < l) $ do swapM es f l; rev (f + 1) (l - 1)
                   rev' f l = do rev f (l - 1); return l
               
@@ -91,12 +91,12 @@ timSortBy cmp es = sort' =<< getSizeOf es
                 when (ex > s) $ unsafeInsertionSort cmp es o (s - 1) (ex - 1)
                 return (ex `max` s)
     
-    merge o sx sy = copied' es o sx >>= mergeGo o 0 (o + sx)
+    merge o sx sy = copyM es o sx >>= mergeGo o 0 (o + sx)
       where
         mergeGo ic il ir left
           | il >= lb = return () -- at least left is empty, merge is completed.
           | ir >= rb = copyTo left il es ic (lb - il)
-          |   True   = (left !#> il) >>=<< (es !#> ir) $
+          |   True   = (left !* il) >>=<< (es !* ir) $
             \ l r -> if r `gt` l
               then writeM es ic l >> mergeGo (ic + 1) (il + 1) ir left
               else writeM es ic r >> mergeGo (ic + 1) il (ir + 1) left

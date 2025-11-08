@@ -277,11 +277,11 @@ class (Eq key, Nullable map) => Map map key e | map -> key, map -> e
     
     -- | Searches the key of first matching element.
     (.$) :: (e -> Bool) -> map -> Maybe key
-    (.$) =  null ?- head ... (*$)
+    f .$ es = case f *$ es of {x : _ -> Just x; _ -> Nothing}
     
     -- | Searches the keys of all matching elements.
     (*$) :: (e -> Bool) -> map -> [key]
-    (*$) f = select (f . snd ?+ fst) . assocs
+    f *$ es = select (f . snd ?+ fst) (assocs es)
 
 --------------------------------------------------------------------------------
 
@@ -330,9 +330,10 @@ instance Map [e] Int e
     
     insert' k e es = k < 0 ? es $ go k es
       where
-        go 0    xs    = isNull xs ? [e] $ e : tail xs
-        go i    []    = err : go (i - 1) []
+        go 0    []    = [e]
+        go 0 (_ : xs) = xs
         go i (x : xs) = x : go (i - 1) xs
+        go i    _     = err : go (i - 1) []
         
         err = undEx "insert'"
     
@@ -380,6 +381,5 @@ underEx =  throw . IndexUnderflow . showString "in SDP.Map."
 
 unreachEx :: String -> a
 unreachEx =  throw . UnreachableException . showString "in SDP.Map."
-
 
 

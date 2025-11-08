@@ -32,6 +32,10 @@ module SDP.SafePrelude
   module Control.Monad.ST,
   module Control.Monad, liftM6,
   
+#if !MIN_VERSION_base(4,13,0)
+  module Control.Monad.Fail,
+#endif
+  
   module Data.Functor.Classes,
   module Data.Bifunctor,
   module Data.Foldable,
@@ -66,6 +70,10 @@ import Prelude hiding
     head, tail, init, last, take, drop, (!!), (++), reverse, filter, lookup,
     concat, concatMap, replicate, takeWhile, dropWhile, iterate,
     
+#if !MIN_VERSION_base(4,13,0)
+    fail,
+#endif
+    
     -- defined in System.IO.Handle, System.IO.Classes (@sdp-io@) and System.IO
     readFile, writeFile, appendFile, getContents,
     getChar, putChar, getLine, putStr, putStrLn
@@ -89,7 +97,14 @@ import Control.Category
 
 import Control.Monad.IO.Class
 import Control.Monad.ST
-import Control.Monad hiding ( zipWithM, mfilter )
+
+-- MonadFail export for LinearM, MapM, etc.
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail ( MonadFail (..) ) -- For base >= 4.9 && < 4.13
+import Control.Monad hiding ( fail, zipWithM, mfilter, replicateM, filterM )
+#else
+import Control.Monad hiding ( zipWithM, mfilter, replicateM, filterM )
+#endif
 
 default ()
 

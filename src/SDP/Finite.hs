@@ -24,11 +24,7 @@ module SDP.Finite
   E (..), (:&) (..),
   
   -- * Type synonyms
-  I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, I11, I12, I13, I14, I15,
-  
-  -- * Old constructors
-  ind2,  ind3,  ind4,  ind5,  ind6,  ind7,  ind8,  ind9,
-  ind10, ind11, ind12, ind13, ind14, ind15
+  I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, I11, I12, I13, I14, I15
 )
 where
 
@@ -152,54 +148,13 @@ type I14 i = (I13 i) :& i
 -- | 15-dimensional index
 type I15 i = (I14 i) :& i
 
--- | 2-dimensional index constructor.
-ind2  :: i -> i                                                                  -> I2  i
--- | 3-dimensional index constructor.
-ind3  :: i -> i -> i                                                             -> I3  i
--- | 4-dimensional index constructor.
-ind4  :: i -> i -> i -> i                                                        -> I4  i
--- | 5-dimensional index constructor.
-ind5  :: i -> i -> i -> i -> i                                                   -> I5  i
--- | 6-dimensional index constructor.
-ind6  :: i -> i -> i -> i -> i -> i                                              -> I6  i
--- | 7-dimensional index constructor.
-ind7  :: i -> i -> i -> i -> i -> i -> i                                         -> I7  i
--- | 8-dimensional index constructor.
-ind8  :: i -> i -> i -> i -> i -> i -> i -> i                                    -> I8  i
--- | 9-dimensional index constructor.
-ind9  :: i -> i -> i -> i -> i -> i -> i -> i -> i                               -> I9  i
--- | 10-dimensional index constructor.
-ind10 :: i -> i -> i -> i -> i -> i -> i -> i -> i -> i                          -> I10 i
--- | 11-dimensional index constructor.
-ind11 :: i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i                     -> I11 i
--- | 12-dimensional index constructor.
-ind12 :: i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i                -> I12 i
--- | 13-dimensional index constructor.
-ind13 :: i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i           -> I13 i
--- | 14-dimensional index constructor.
-ind14 :: i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i      -> I14 i
--- | 15-dimensional index constructor.
-ind15 :: i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> i -> I15 i
-
-ind2  a b                           = E:&a:&b
-ind3  a b c                         = E:&a:&b:&c
-ind4  a b c d                       = E:&a:&b:&c:&d
-ind5  a b c d e                     = E:&a:&b:&c:&d:&e
-ind6  a b c d e f                   = E:&a:&b:&c:&d:&e:&f
-ind7  a b c d e f g                 = E:&a:&b:&c:&d:&e:&f:&g
-ind8  a b c d e f g h               = E:&a:&b:&c:&d:&e:&f:&g:&h
-ind9  a b c d e f g h i             = E:&a:&b:&c:&d:&e:&f:&g:&h:&i
-ind10 a b c d e f g h i j           = E:&a:&b:&c:&d:&e:&f:&g:&h:&i:&j
-ind11 a b c d e f g h i j k         = E:&a:&b:&c:&d:&e:&f:&g:&h:&i:&j:&k
-ind12 a b c d e f g h i j k l       = E:&a:&b:&c:&d:&e:&f:&g:&h:&i:&j:&k:&l
-ind13 a b c d e f g h i j k l m     = E:&a:&b:&c:&d:&e:&f:&g:&h:&i:&j:&k:&l:&m
-ind14 a b c d e f g h i j k l m n   = E:&a:&b:&c:&d:&e:&f:&g:&h:&i:&j:&k:&l:&m:&n
-ind15 a b c d e f g h i j k l m n o = E:&a:&b:&c:&d:&e:&f:&g:&h:&i:&j:&k:&l:&m:&n:&o
+--------------------------------------------------------------------------------
 
 unsnoc :: [i] -> ([i], i)
 unsnoc    [i]   = ([], i)
 unsnoc (i : is) = (i :) `first` unsnoc is
 unsnoc     _    = throw $ UnexpectedRank "in SDP.Finite.fromList"
+
 
 
 

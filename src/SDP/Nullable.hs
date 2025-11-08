@@ -102,7 +102,7 @@ class Monad m => NullableM m e
     newNull :: m e
     
     -- | Monadic 'SDP.Nullable.isNull'.
-    nowNull :: e -> m Bool
+    isNullM :: e -> m Bool
 
 --------------------------------------------------------------------------------
 
