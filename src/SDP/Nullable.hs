@@ -7,7 +7,7 @@
 
 {- |
     Module      :  SDP.Nullable
-    Copyright   :  (c) Andrey Mulik 2020-2022
+    Copyright   :  (c) Andrey Mulik 2020-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
@@ -77,16 +77,16 @@ default ()
     foldr1 f Z === foldl1 f Z === undefined
   @
 -}
-class Nullable e
+class Nullable n
   where
     -- | Empty value.
-    default lzero :: Monoid e => e
-    lzero :: e
+    default lzero :: Monoid n => n
+    lzero :: n
     lzero =  mempty
     
     -- | Is value empty?
-    default isNull :: Eq e => e -> Bool
-    isNull :: e -> Bool
+    default isNull :: Eq n => n -> Bool
+    isNull :: n -> Bool
     isNull =  (== lzero)
 
 --------------------------------------------------------------------------------
@@ -96,13 +96,13 @@ class Nullable e
   
   'NullableM' is class of types which value may be empty.
 -}
-class Monad m => NullableM m e
+class Monad m => NullableM m n
   where
     -- | Monadic 'SDP.Nullable.lzero'.
-    newNull :: m e
+    newNull :: m n
     
     -- | Monadic 'SDP.Nullable.isNull'.
-    isNullM :: e -> m Bool
+    isNullM :: n -> m Bool
 
 --------------------------------------------------------------------------------
 
@@ -110,7 +110,7 @@ class Monad m => NullableM m e
 {-# COMPLETE Z,    Just #-}
 
 -- | Originally defined in @sdp-ctypes@ (now @sdp-foreign@), same as @Z@ now.
-pattern NULL :: Nullable e => e
+pattern NULL :: Nullable n => n
 pattern NULL <- (isNull -> True) where NULL = lzero
 
 {- |
@@ -118,7 +118,7 @@ pattern NULL <- (isNull -> True) where NULL = lzero
   
   Defined in "SDP.Nullable" since @sdp-0.2.1@, earlier - in "SDP.Linear".
 -}
-pattern Z :: Nullable e => e
+pattern Z :: Nullable n => n
 pattern Z =  NULL
 
 --------------------------------------------------------------------------------
@@ -185,8 +185,10 @@ type NullableM'' m rep = forall i e . NullableM m (rep i e)
 
 instance Nullable (Maybe e)
   where
-    isNull = \ mx -> case mx of {Nothing -> True; _ -> False}
-    lzero  = Nothing
+    isNull Nothing = True
+    isNull       _ = False
+    
+    lzero = Nothing
 
 {-# COMPLETE Z,    (:) #-}
 {-# COMPLETE NULL, (:) #-}
@@ -212,4 +214,7 @@ instance Nullable (StablePtr e) where lzero = StablePtr (unsafeCoerce# 0#)
 
 -- | @since 0.2.1
 instance Nullable (FunPtr e) where lzero = nullFunPtr
+
+
+
 

@@ -8,7 +8,7 @@
 
 {- |
     Module      :  SDP.LinearM
-    Copyright   :  (c) Andrey Mulik 2019-2022
+    Copyright   :  (c) Andrey Mulik 2019-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
@@ -18,10 +18,12 @@
 module SDP.LinearM
 (
   -- * Exports
+  module SDP.SequenceM,
   module SDP.Linear,
+  module SDP.Concat,
   
   -- * LinearM class
-  LinearM (..), LinearM1, LinearM2, unconsM, unsnocM, prefixM, suffixM,
+  LinearM (..), LinearM1, LinearM2, unconsM, unsnocM, headM, tailM, initM, lastM,
   
 #ifdef SDP_QUALIFIED_CONSTRAINTS
   -- ** Rank 2 quantified constraints
@@ -30,10 +32,8 @@ module SDP.LinearM
 #endif
   
   -- * Extra functions
-  intersperseM, intercalateM, eachM, eachFromM,
-  
-  -- ** Folds
-  foldrM1, foldlM1,
+  intersperseM, intercalateM, eachM, eachFromM, mreplicate, iterateM,
+  unsafeSwapM,
   
   -- ** Splits
   saveM, skipM, partsM, chunksM,
@@ -51,7 +51,9 @@ where
 
 import Prelude ()
 import SDP.SafePrelude
+import SDP.SequenceM
 import SDP.Linear
+import SDP.Concat
 
 import Control.Exception.SDP
 
@@ -66,12 +68,12 @@ infixl 5 !*
   designed with the possibility of in-place implementation, so many operations
   from 'Linear' have no analogues here.
 -}
-class (Monad m, ForceableM m l, NullableM m l, EstimateM m l)
+class (EstimateM m l, SequenceM m l e, ForceableM m l, ConcatM m l)
     => LinearM m l e | l -> m, l -> e
   where
-    {-# MINIMAL ((getHead,getTail)|unsnocM'), (takeM|sansM), (<~>),
-                ((getInit,getLast)|unconsM'), (dropM|keepM),
-                (getLeft|getRight), (!*), writeM, copyTo,
+    {-# MINIMAL ((headM',tailM')|unsnocM'), (takeM|sansM),
+                ((initM',lastM')|unconsM'), (dropM|keepM),
+                (!*), writeM, unsafeCopyTo,
                 (newLinear|fromFoldableM) #-}
     
     {- Item-level operations. -}
@@ -82,7 +84,7 @@ class (Monad m, ForceableM m l, NullableM m l, EstimateM m l)
       correctness of the original structure after conversion.
     -}
     prepend :: e -> l -> m l
-    prepend e es = newLinear . (e :) =<< getLeft es
+    prepend e es = do e' <- singleM e; e' <~> es
     
     {- |
       Appends new element to the end of the structure (monadic 'toLast').
@@ -90,55 +92,57 @@ class (Monad m, ForceableM m l, NullableM m l, EstimateM m l)
       correctness of the original structure after conversion.
     -}
     append :: l -> e -> m l
-    append es e = newLinear . (:< e) =<< getLeft es
+    append es e = do e' <- singleM e; es <~> e'
     
     {- |
       @since 0.3
       
       Separates mutable structure to head and tail.
     -}
-    default unconsM' :: MonadFail m => l -> m (Maybe (e, l))
+    default unconsM' :: l -> m (Maybe (e, l))
     unconsM' :: l -> m (Maybe (e, l))
-    unconsM' es = isNullM es ?^ pure Nothing $ do
-      h <- getHead es
-      t <- getTail es
-      pure $ Just (h, t)
+    unconsM' es = liftA2 (liftA2 (,)) (headM' es) (tailM' es)
     
     {- |
       @since 0.3
       
       Separates mutable structure to init and last.
     -}
-    default unsnocM' :: MonadFail m => l -> m (Maybe (l, e))
+    default unsnocM' :: l -> m (Maybe (l, e))
     unsnocM' :: l -> m (Maybe (l, e))
-    unsnocM' es = isNullM es ?^ pure Nothing $ do
-      i <- getInit es
-      l <- getLast es
-      pure $ Just (i, l)
-    
-    -- | 'getHead' returns head of structure. Fails if structure is empty.
-    getHead :: MonadFail m => l -> m e
-    getHead es = do Just (x, _) <- unconsM' es; return x
+    unsnocM' es = liftA2 (liftA2 (,)) (initM' es) (lastM' es)
     
     {- |
       @since 0.3
       
-      'getTail' returns tail of structure. Fails if structure is empty.
+      Returns head element of line or 'Nothing'.
     -}
-    getTail :: MonadFail m => l -> m l
-    getTail es = do Just (_, xs) <- unconsM' es; return xs
+    headM' :: l -> m (Maybe e)
+    headM' =  fmap fsts . unconsM'
     
     {- |
       @since 0.3
       
-      'getInit' returns init of structure. Fails if structure is empty.
+      Returns tail of line or 'Nothing'.
     -}
-    getInit :: MonadFail m => l -> m l
-    getInit es = do Just (xs, _) <- unsnocM' es; return xs
+    tailM' :: l -> m (Maybe l)
+    tailM' =  fmap snds . unconsM'
     
-    -- | 'getLast' returns last element of structure. Fails if structure is empty.
-    getLast :: MonadFail m => l -> m e
-    getLast es = do Just (_, x) <- unsnocM' es; return x
+    {- |
+      @since 0.3
+      
+      Returns init of line or 'Nothing'.
+    -}
+    initM' :: l -> m (Maybe l)
+    initM' =  fmap fsts . unsnocM'
+    
+    {- |
+      @since 0.3
+      
+      Returns last element of line or 'Nothing'.
+    -}
+    lastM' :: l -> m (Maybe e)
+    lastM' =  fmap snds . unsnocM'
     
     {- Splits. -}
     
@@ -219,47 +223,6 @@ class (Monad m, ForceableM m l, NullableM m l, EstimateM m l)
     {- |
       @since 0.3
       
-      Mutable version of 'iterate'.
-    -}
-    iterateM :: Int -> (e -> m e) -> e -> m l
-    iterateM n go e = newLinearN n =<< iterate' n e id
-      where
-        iterate' 0 _ xs = return (xs [])
-        iterate' i x xs = do x' <- go x; iterate' (i - 1) x' (xs . (x :))
-    
-    {- Concatenation. -}
-    
-    (<~>) :: l -> l -> m l
-    
-    {- |
-      @since 0.3
-      
-      Monadic 'concat', returns new structure.
-    -}
-    concatM :: Foldable f => f l -> m l
-    concatM =  foldr (\ x xs -> do xs' <- xs; x <~> xs') newNull
-    
-    {- |
-      @since 0.3
-      
-      Monadic 'concatMap', returns new structure.
-    -}
-    concatMapM :: Foldable f => (a -> m l) -> f a -> m l
-    concatMapM go = foldr (\ x xs -> do x' <- go x; xs' <- xs; x' <~> xs') newNull
-    
-    -- | Left view of line.
-    {-# INLINE getLeft #-}
-    getLeft :: l -> m [e]
-    getLeft =  fmap reverse . getRight
-    
-    -- | Right view of line.
-    {-# INLINE getRight #-}
-    getRight :: l -> m [e]
-    getRight =  fmap reverse . getLeft
-    
-    {- |
-      @since 0.3
-      
       Monadic 'reverseM', returns new structure.
     -}
     {-# INLINE reversed #-}
@@ -267,56 +230,21 @@ class (Monad m, ForceableM m l, NullableM m l, EstimateM m l)
     reverseM =  newLinear <=< getRight
     
     {- |
-      @since 0.2.1
+      @since 0.3
       
       Monadic in-place 'reverse', reverse elements of given structure.
     -}
-    default reversed :: MonadFail m => l -> m ()
+    default reversed :: l -> m ()
     reversed :: l -> m ()
-    reversed es = ofoldr (\ i e go -> do writeM es i e; go) (return ()) =<< getRight es
-    
-    {- Folds. -}
-    
-    -- | 'foldrM' is just 'ofoldrM' in 'Linear' context.
-    foldrM :: (e -> r -> m r) -> r -> l -> m r
-    foldrM =  ofoldrM . const
-    
-    -- | 'foldlM' is just 'ofoldlM' in 'Linear' context.
-    foldlM :: (r -> e -> m r) -> r -> l -> m r
-    foldlM =  ofoldlM . const
-    
-    -- | 'foldrM'' is strict version of 'foldrM'.
-    foldrM' :: (e -> r -> m r) -> r -> l -> m r
-    foldrM' f = foldrM (\ e !r -> f e r)
-    
-    -- | 'foldlM'' is strict version of 'foldlM'.
-    foldlM' :: (r -> e -> m r) -> r -> l -> m r
-    foldlM' f = foldlM (\ !r e -> f r e)
-    
-    {- Folds with offset. -}
-    
-    -- | 'ofoldrM' is right monadic fold with offset.
-    ofoldrM :: (Int -> e -> r -> m r) -> r -> l -> m r
-    ofoldrM go base = ofoldr ((=<<) ... go) (pure base) <=< getLeft
-    
-    -- | 'ofoldlM' is left monadic fold with offset.
-    ofoldlM :: (Int -> r -> e -> m r) -> r -> l -> m r
-    ofoldlM go base = ofoldl (\ i r e -> do r' <- r; go i r' e) (pure base) <=< getLeft
-    
-    -- | 'ofoldrM'' is strict version of 'ofoldrM'.
-    ofoldrM' :: (Int -> e -> r -> m r) -> r -> l -> m r
-    ofoldrM' f = ofoldrM (\ !i e !r -> f i e r)
-    
-    -- | 'ofoldrM'' is strict version of 'ofoldrM'.
-    ofoldlM' :: (Int -> r -> e -> m r) -> r -> l -> m r
-    ofoldlM' f = ofoldlM (\ !i !r e -> f i r e)
+    reversed es = do
+      n <- getSizeOf es
+      forM_ [0 .. n `quot` 2 - 1] $ \ i ->
+        unsafeSwapM es i (n - 1 - i)
     
     {- Filtering operations. -}
     
     filterM :: (e -> m Bool) -> l -> m l
-    filterM go = newLinear <=< foldrM (\ e xs ->
-        do b <- go e; return (b ? e : xs $ xs)
-      ) []
+    filterM go = newLinear <=< foldrM (\ e xs -> go e ?^ pure (e : xs) $ pure xs) []
     
     {- Conditional splits. -}
     
@@ -351,16 +279,6 @@ class (Monad m, ForceableM m l, NullableM m l, EstimateM m l)
       is <- infixesM  sub line
       ps <- partsM    is  line
       forM ps (dropM s)
-    
-    {- Subsequence operations. -}
-    
-    -- | @mprefix p es@ returns the longest @es@ prefix size, satisfying @p@.
-    mprefix :: (e -> m Bool) -> l -> m Int
-    mprefix p = foldrM (\ e c -> p e ?^ pure (succ c) $ pure 0) 0
-    
-    -- | @msuffix p es@ returns the longest @es@ suffix size, satisfying @p@.
-    msuffix :: (e -> m Bool) -> l -> m Int
-    msuffix p = foldlM (\ c e -> p e ?^ pure (succ c) $ pure 0) 0
     
     {- |
       @since 0.3
@@ -428,59 +346,111 @@ class (Monad m, ForceableM m l, NullableM m l, EstimateM m l)
     
     {- Operations with elements. -}
     
-    -- | @('!*')@ is unsafe monadic offset-based reader.
+    {- |
+      @since 0.3
+      
+      Monadic offset-based reader.
+    -}
     (!*) :: MonadFail m => l -> Int -> m e
     
-    -- | Unsafe monadic offset-based writer.
+    {- |
+      @since 0.3
+      
+      Unsafe monadic offset-based reader.
+    -}
+    default unsafeReadByOff :: MonadFail m => l -> Int -> m e
+    unsafeReadByOff :: l -> Int -> m e
+    unsafeReadByOff =  (!*)
+    
+    -- | Monadic offset-based writer.
     writeM :: MonadFail m => l -> Int -> e -> m ()
     
-    {-# INLINE copyM #-}
-    -- | @copied' es l n@ returns the slice of @es@ from @l@ of length @n@.
-    copyM :: l -> Int -> Int -> m l
-    copyM es l n = getLeft es >>= newLinearN n . drop l
+    {- |
+      @since 0.3
+      
+      Unsafe monadic offset-based writer.
+    -}
+    default unsafeWriteM :: MonadFail m => l -> Int -> e -> m ()
+    unsafeWriteM :: l -> Int -> e -> m ()
+    unsafeWriteM =  writeM
+    
+    {-# INLINE unsafeCopyM #-}
+    -- | @unsafeCopyM es l n@ returns the slice of @es@ from @l@ of length @n@.
+    unsafeCopyM :: l -> Int -> Int -> m l
+    unsafeCopyM es l n = do
+      copy <- mreplicate n (emptyEx "unsafeCopyM")
+      copy <$ unsafeCopyTo es l copy 0 n
     
     -- | @'removed' n es@ removes element with offset @n@ from @es@.
     removeM :: Int -> l -> m l
     removeM n es = newLinear . remove n =<< getLeft es
     
     {- |
-      @since 0.2.1
+      @since 0.3
       
-      @'lshiftM' es i j@ cyclically shifts the elements with offsets between @i@
-      and @j@ @(i < j)@ one position to the left (the @j@-th element is in the
-      @i@-th position, the @i@-th in the @(i+1)@th, etc.) If @i >= j@, does
-      nothing.
+      @'shiftM' es i j@ cyclically shifts the elements with offsets between
+      @i@ and @j@ @(i < j)@ one position to the left (the @j@-th element is in
+      the @i@-th position, the @i@-th in the @(i+1)@th, etc.) If @i >= j@,
+      does nothing.
     -}
-    lshiftM :: MonadFail m => l -> Int -> Int -> m ()
-    lshiftM es i j =
-      let go k ej = when (k <= j) $ do ek <- es !* k; writeM es k ej; go (k + 1) ek
-      in  when (i < j) $ go i =<< (es !* j)
+    shiftM :: l -> Int -> Int -> m ()
+    shiftM es i j =
+      let go k ej = when (k <= j) $ do
+            ek <- unsafeReadByOff es k
+            unsafeWriteM es k ej
+            go (k + 1) ek
+      in  when (i < j) $ go i =<< unsafeReadByOff es j
     
     {- |
-      @copyTo source soff target toff count@ writes @count@ elements of @source@
-      from @soff@ to @target@ starting with @toff@.
+      @unsafeCopyTo source soff target toff count@ writes @count@ elements of
+      @source@ from @soff@ to @target@ starting with @toff@.
     -}
-    copyTo :: MonadFail m => l -> Int -> l -> Int -> Int -> m ()
-    
-    -- | Just swap two elements.
-    swapM :: MonadFail m => l -> Int -> Int -> m ()
-    swapM es i j = do ei <- es !* i; writeM es i =<< es !* j; writeM es j ei
+    unsafeCopyTo :: l -> Int -> l -> Int -> Int -> m ()
+    unsafeCopyTo xs ox ys oy n = forM_ [0 .. n] $ \ i -> do
+      x <- unsafeReadByOff xs (ox + i)
+      unsafeWriteM ys (oy + i) x
 
 --------------------------------------------------------------------------------
 
+{- |
+  @since 0.3
+  
+  'unconsM' returns head and tail of structure. Fails if structure is empty.
+-}
 unconsM :: (MonadFail m, LinearM m l e) => l -> m (e, l)
 unconsM es = do Just (h, t) <- unconsM' es; return (h, t)
 
+{- |
+  @since 0.3
+  
+  'unsnocM' returns init and last of structure. Fails if structure is empty.
+-}
 unsnocM :: (MonadFail m, LinearM m l e) => l -> m (l, e)
 unsnocM es = do Just (i, l) <- unsnocM' es; return (i, l)
 
--- | @prefixM p es@ returns the longest @es@ prefix size, satisfying @p@.
-prefixM :: LinearM m l e => (e -> Bool) -> l -> m Int
-prefixM =  mprefix . (pure .)
+-- | 'headM' returns head of structure. Fails if structure is empty.
+headM :: (MonadFail m, LinearM m l e) => l -> m e
+headM es = do Just x <- headM' es; return x
 
--- | @suffixM p es@ returns the longest @es@ suffix size, satisfying @p@.
-suffixM :: LinearM m l e => (e -> Bool) -> l -> m Int
-suffixM =  msuffix . (pure .)
+{- |
+  @since 0.3
+  
+  'tailM' returns tail of structure. Fails if structure is empty.
+-}
+tailM :: (MonadFail m, LinearM m l e) => l -> m l
+tailM es = do Just xs <- tailM' es; return xs
+
+{- |
+  @since 0.3
+  
+  'initM' returns init of structure. Fails if structure is empty.
+-}
+initM :: (MonadFail m, LinearM m l e) => l -> m l
+initM es = do Just xs <- initM' es; return xs
+
+-- | 'lastM' returns last element of structure. Fails if structure is empty.
+lastM :: (MonadFail m, LinearM m l e) => l -> m e
+lastM es = do Just x <- lastM' es; return x
 
 --------------------------------------------------------------------------------
 
@@ -497,26 +467,6 @@ type LinearM' m l = forall e . LinearM m (l e) e
 -- | 'LinearM' contraint for @(Type -> Type -> Type)@-kind types.
 type LinearM'' m l = forall i e . LinearM m (l i e) e
 #endif
-
---------------------------------------------------------------------------------
-
-{- Extra folds. -}
-
-{-# WARNING foldrM1 "This is a partial function, it throws an error on empty lists." #-}
-
--- | 'foldrM1' is 'foldrM' version with 'last' element as base.
-foldrM1 :: LinearM m l e => (e -> e -> m e) -> l -> m e
-foldrM1 f = getLeft >=> \ es' -> case es' of
-  (es :< e) -> foldr ((=<<) . f) (pure e) es
-  _         -> emptyEx "foldrM1: must be non-empty"
-
-{-# WARNING foldlM1 "This is a partial function, it throws an error on empty lists." #-}
-
--- | 'foldlM1' is 'foldlM' version with 'head' element as base.
-foldlM1 :: LinearM m l e => (e -> e -> m e) -> l -> m e
-foldlM1 f = getLeft >=> \ es' -> case es' of
-  (e :> es) -> foldl (flip $ (=<<) . flip f) (pure e) es
-  _         -> emptyEx "foldlM1: must be non-empty"
 
 --------------------------------------------------------------------------------
 
@@ -696,10 +646,40 @@ eachM n es = case n <=> 1 of
 eachFromM :: LinearM m l e => Int -> Int -> l -> m l
 eachFromM o n = eachM n <=< dropM o
 
+{- |
+  @since 0.3
+  
+  Mutable version of 'iterate'.
+-}
+iterateM :: LinearM m l e => Int -> (e -> m e) -> e -> m l
+iterateM n go e = newLinearN n =<< iterate' n e id
+  where
+    iterate' 0 _ xs = return (xs [])
+    iterate' i x xs = do x' <- go x; iterate' (i - 1) x' (xs . (x :))
+
+{- |
+  @since 0.3
+  
+  Monadic version of 'replicate'.
+-}
+mreplicate :: LinearM m l e => Int -> e -> m l
+mreplicate n e = newLinearN n (replicate n e)
+
+{- |
+  @since 0.3
+  
+  Just swap two elements.
+-}
+unsafeSwapM :: LinearM m l e => l -> Int -> Int -> m ()
+unsafeSwapM es i j = do
+  ei <- unsafeReadByOff es i
+  ej <- unsafeReadByOff es j
+  unsafeWriteM es i ej
+  unsafeWriteM es j ei
+
 --------------------------------------------------------------------------------
 
 emptyEx :: String -> a
 emptyEx =  throw . PatternMatchFail . showString "in SDP.LinearM."
-
 
 

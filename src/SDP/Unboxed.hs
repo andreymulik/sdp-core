@@ -18,7 +18,7 @@ module SDP.Unboxed
   -- * Unboxed
   Unboxed (..), cloneUnboxed#, cloneUnboxedM#, thawUnboxed#, freezeUnboxed#,
   bytewiseEqUnboxed##, radixSortUnboxed#, copyUnboxed#, copyUnboxedM#,
-  sizeof, offsetof, chunkof,
+  sizeof, offsetof, chunkof, unsafeFreezeUnboxed#,
   
   -- ** Kind @(Type -> Type)@ proxies
   psizeof#, psizeof, pchunkof, pchunkof#, poffsetof#, poffsetof,
@@ -200,7 +200,7 @@ pcloneUnboxedM =  cloneUnboxedM# . fromProxy
   
   Kind @(Type -> Type)@ proxy version of 'thawUnboxed#'.
 -}
-pthawUnboxed :: Unboxed e => proxy e -> ByteArray# -> Int#
+pthawUnboxed :: Unboxed e => proxy e -> ByteArray# -> Int# -> Int#
              -> State# s -> (# State# s, MutableByteArray# s #)
 pthawUnboxed =  thawUnboxed# . fromProxy
 
@@ -248,8 +248,7 @@ fromListN# n# es = unwrap $ runST $ ST $ \ s1# -> case newLinearN# n# es s1# of
   
   Create mutable 'Unboxed' array from given list.
 -}
-newLinear# :: Unboxed e => [e] -> State# s
-           -> (# State# s, MutableByteArray# s #)
+newLinear# :: Unboxed e => [e] -> State# s -> (# State# s, MutableByteArray# s #)
 newLinear# es = let !(I# n#) = length es in newLinearN# n# es
 
 {- |
@@ -317,13 +316,13 @@ cloneUnboxedM# e mbytes# o# n# = \ s1# -> case newByteArray# (sizeof# e n#) s1# 
 {- |
   @since 0.2.1
   
-  @'thawUnboxed#' e bytes# c#@ creates new @sizeof# e c#@ bytes length
+  @'thawUnboxed#' e bytes# c# o#@ creates new @sizeof# e c#@ bytes length
   'MutableByteArray#' and copy @bytes#@ to it.
 -}
-thawUnboxed# :: Unboxed e => e -> ByteArray# -> Int#
+thawUnboxed# :: Unboxed e => e -> ByteArray# -> Int# -> Int#
              -> State# s -> (# State# s, MutableByteArray# s #)
-thawUnboxed# e bytes# c# = let n# = sizeof# e c# in \ s1# -> case newByteArray# n# s1# of
-  (# s2#, mbytes# #) -> case copyByteArray# bytes# 0# mbytes# 0# n# s2# of
+thawUnboxed# e bytes# c# o# = let n# = sizeof# e c# in \ s1# -> case newByteArray# n# s1# of
+  (# s2#, mbytes# #) -> case copyByteArray# bytes# o# mbytes# 0# n# s2# of
     s3# -> (# s3#, mbytes# #)
 
 {- |
@@ -336,6 +335,14 @@ freezeUnboxed# :: Unboxed e => e -> MutableByteArray# s -> Int#
                -> State# s -> (# State# s, ByteArray# #)
 freezeUnboxed# e mbytes# n# = \ s1# -> case cloneUnboxedM# e mbytes# 0# n# s1# of
   (# s2#, copy# #) -> unsafeFreezeByteArray# copy# s2#
+
+{- |
+  @since 0.3
+  
+  @'freezeUnboxed#' e mbytes# c#@ freezes byte array.
+-}
+unsafeFreezeUnboxed# :: MutableByteArray# s -> State# s -> (# State# s, ByteArray# #)
+unsafeFreezeUnboxed# =  unsafeFreezeByteArray#
 
 {- |
   @'copyUnboxed#' e bytes\# o1\# mbytes\# o2\# n\#@ unsafely writes elements
@@ -410,6 +417,4 @@ pcloneUnboxed1 =  cloneUnboxed# . fromProxy1
 pcloneUnboxedM1 :: Unboxed e => p (proxy e) -> MutableByteArray# s -> Int# -> Int#
                 -> State# s -> (# State# s, MutableByteArray# s #)
 pcloneUnboxedM1 =  cloneUnboxedM# . fromProxy1
-
-
 

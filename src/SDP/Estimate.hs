@@ -7,7 +7,7 @@
 
 {- |
     Module      :  SDP.Estimate
-    Copyright   :  (c) Andrey Mulik 2019-2022
+    Copyright   :  (c) Andrey Mulik 2019-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
@@ -305,12 +305,8 @@ instance Estimate [a]
     _  <==> [] = GT
     (_ : xs) <==> (_ : ys) = xs <==> ys
     
-    [] <.=> n = 0 <=> n
-    es <.=> n =
-      let
-          go _   0 = GT
-          go xs' c = case xs' of {_ : xs -> go xs (c - 1); _ -> 0 <=> c}
-      in  if n < 0 then LT else go es n
+    []       <.=> n = 0 <=> n
+    (_ : es) <.=> n = if n < 1 then GT else es <.=> (n - 1)
 
 instance Monad m => EstimateM m [a]
   where
@@ -319,7 +315,6 @@ instance Monad m => EstimateM m [a]
     
     (<<=>>) = return ... (<==>)
     (<=>>)  = return ... (<.=>)
-
 
 
 

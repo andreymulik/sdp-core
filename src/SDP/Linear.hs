@@ -12,7 +12,7 @@
 
 {- |
     Module      :  SDP.Linear
-    Copyright   :  (c) Andrey Mulik 2019-2022
+    Copyright   :  (c) Andrey Mulik 2019-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
@@ -25,6 +25,8 @@ module SDP.Linear
   -- * Exports
   module SDP.Forceable,
   module SDP.Nullable,
+  module SDP.Sequence,
+  module SDP.Concat,
   module SDP.Index,
   module SDP.Sort,
   module SDP.Zip,
@@ -34,7 +36,6 @@ module SDP.Linear
   
   -- * Linear class
   Linear (..), Linear1, Linear2, pattern (:>), pattern (:<), uncons, unsnoc,
-  (++),
   
 #ifdef SDP_QUALIFIED_CONSTRAINTS
   -- ** Rank 2 quantified constraints
@@ -43,7 +44,8 @@ module SDP.Linear
 #endif
   
   -- * Extra functions
-  intersperse, intercalate, subsequences, each, eachFrom, after, ascending,
+  intersperse, intercalate, subsequences, each, eachFrom, ascending,
+  iterate,
   
   -- ** Folds
   sfoldr1, sfoldl1, sfoldr1', sfoldl1', csfoldr', csfoldl', msfoldr, msfoldl,
@@ -74,11 +76,7 @@ module SDP.Linear
   extractWhile, extractWhile', extractEnd, extractEnd',
   
   -- ** Monadic selects
-  mselect, mselect', mextract, mextract',
-  
-  -- ** Deprecated
-  o_foldr1, o_foldl1, o_foldr1', o_foldl1',
-  o_foldr, o_foldl, o_foldr', o_foldl'
+  mselect, mselect', mextract, mextract'
 )
 where
 
@@ -86,7 +84,9 @@ import Prelude ()
 import SDP.SafePrelude
 import SDP.Forceable
 import SDP.Nullable
+import SDP.Sequence
 import SDP.Bordered
+import SDP.Concat
 import SDP.Index
 import SDP.Sort
 import SDP.Zip
@@ -102,19 +102,18 @@ import Control.Exception.SDP
 default ()
 
 infix  8 `filter`, `except`
-infixr 5 :>, ++
+infixr 5 :>
 infixl 5 :<
-infixl 9 !^
+infixl 9 !!
 
 --------------------------------------------------------------------------------
 
 {-# WARNING uncons "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
 {-# WARNING unsnoc "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
-
-{-# WARNING head "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
-{-# WARNING tail "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
-{-# WARNING init "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
-{-# WARNING last "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
+{-# WARNING head   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
+{-# WARNING tail   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
+{-# WARNING init   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
+{-# WARNING last   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
 
 {- |
   'Linear' is one of the main SDP classes, a class of linear data structures.
@@ -135,11 +134,6 @@ infixl 9 !^
   'Linear' structures must follow some rules:
   
   @
-    mempty === lzero
-    foldMap === concatMap
-    (<>) === (++) === mappend
-    fold === concat === mconcat
-    
     fromList === fromFoldable
     fromFoldable === sfoldr toHead Z
     
@@ -191,15 +185,13 @@ infixl 9 !^
 -}
 class
   (
-    Monoid l, Nullable l,
-#if !MIN_VERSION_base(4,11,0)
-    Semigroup l,
-#endif
 #ifdef SDP_LINEAR_EXTRAS
     L.IsList l, e ~ L.Item l,
 #endif
+    Sequence l e,
     Forceable l,
-    Estimate l
+    Estimate l,
+    Concat l
   ) => Linear l e | l -> e
   where
     {-# MINIMAL ((head,last)|uncons'), (take|sans), (toHead|single),
@@ -301,53 +293,9 @@ class
     replicate :: Int -> e -> l
     replicate n = fromListN n . replicate n
     
-    {- |
-      @iterate n f x@ returns sequence of @n@ applications of @f@ to @x@.
-      
-      Note that @iterate@ returns finite sequence, instead "Prelude" prototype.
-    -}
-    iterate :: Int -> (e -> e) -> e -> l
-    iterate n = fromListN n ... iterate n
-    
-    {- Concatenation. -}
-    
-    -- | Generalized concat.
-    concat :: Foldable f => f l -> l
-    concat =  fold
-    
-    -- | Generalized concatMap.
-    concatMap :: Foldable f => (a -> l) -> f a -> l
-    concatMap =  foldMap
-    
-    -- | Left to right view of line, same to 'toList'.
-    listL :: l -> [e]
-    listL =  sfoldr (:) []
-    
-    -- | Right to left view of line.
-    listR :: l -> [e]
-    listR =  L.reverse . listL
-    
     -- | Returns sequence with reversed element order.
     reverse :: l -> l
     reverse =  fromList . listR
-    
-    {- Folds. -}
-    
-    -- | 'sfoldr' is just 'foldr' in 'Linear' context.
-    sfoldr :: (e -> b -> b) -> b -> l -> b
-    sfoldr =  ofoldr . const
-    
-    -- | 'sfoldl' is just 'foldl' in 'Linear' context.
-    sfoldl :: (b -> e -> b) -> b -> l -> b
-    sfoldl =  ofoldl . const
-    
-    -- | 'sfoldr'' is just 'foldr'' in 'Linear' context.
-    sfoldr' :: (e -> b -> b) -> b -> l -> b
-    sfoldr' =  ofoldr' . const
-    
-    -- | 'sfoldl'' is just 'foldl'' in 'Linear' context.
-    sfoldl' :: (b -> e -> b) -> b -> l -> b
-    sfoldl' =  ofoldl' . const
     
     {- |
       @since 0.3
@@ -361,24 +309,6 @@ class
     unfoldr :: (b -> Maybe (e, b)) -> b -> l
     unfoldr =  fromList ... L.unfoldr
     
-    {- Folds with offset. -}
-    
-    -- | 'ofoldr' is right fold with offset.
-    ofoldr :: (Int -> e -> b -> b) -> b -> l -> b
-    ofoldr f base = ofoldr f base . listL
-    
-    -- | 'ofoldl' is left fold with offset.
-    ofoldl :: (Int -> b -> e -> b) -> b -> l -> b
-    ofoldl f base = ofoldl f base . listL
-    
-    -- | 'ofoldr'' is strict version of 'ofoldr'.
-    ofoldr' :: (Int -> e -> b -> b) -> b -> l -> b
-    ofoldr' f = ofoldr (\ !i e !b -> f i e b)
-    
-    -- | 'ofoldl'' is strict version of 'ofoldl'.
-    ofoldl' :: (Int -> b -> e -> b) -> b -> l -> b
-    ofoldl' f = ofoldl (\ !i !b e -> f i b e)
-    
     {- Filtering operations. -}
     
     -- | Generalized filter.
@@ -386,10 +316,6 @@ class
     filter p = fromList . sfoldr (\ x xs -> p x ? x : xs $ xs) []
     
     {- Conditional splits. -}
-    
-    -- | Splits line by separation elements.
-    splitsBy :: (e -> Bool) -> l -> [l]
-    splitsBy e = map fromList . splitsBy e . listL
     
     -- | Takes the longest 'prefix' by predicate.
     takeWhile :: (e -> Bool) -> l -> l
@@ -407,6 +333,10 @@ class
     dropEnd :: (e -> Bool) -> l -> l
     dropEnd p es = sans (suffix p es) es
     
+    -- | Splits line by separation elements.
+    splitsBy :: (e -> Bool) -> l -> [l]
+    splitsBy e = map fromList . splitsBy e . listL
+    
     {- |
       @splitsOn sub line@ splits @line@ by @sub@.
       
@@ -416,14 +346,6 @@ class
     splitsOn sub line = drop (sizeOf sub) <$> parts (infixes sub line) line
     
     {- Subsequence operations. -}
-    
-    -- | prefix gives length of init, satisfying preducate.
-    prefix :: (e -> Bool) -> l -> Int
-    prefix p = sfoldr' (\ e c -> p e ? succ c $ 0) 0
-    
-    -- | suffix gives length of tail, satisfying predicate.
-    suffix :: (e -> Bool) -> l -> Int
-    suffix p = sfoldl' (\ c e -> p e ? succ c $ 0) 0
     
     {- |
       @infixes inf es@ returns a list of @inf@ positions in @es@, without
@@ -507,10 +429,10 @@ class
       If you need safety, use (!) or (!?). The generalization of this function
       by index type (.!).
       
-      > es !^ i = listL es !! i
+      > es !! i = listL es !! i
     -}
-    (!^) :: l -> Int -> e
-    (!^) =  (L.!!) . listL
+    (!!) :: l -> Int -> e
+    (!!) =  (L.!!) . listL
     
     {- |
       @write es n e@ writes value @e@ in position @n@ (offset), returns new
@@ -518,23 +440,6 @@ class
     -}
     write :: l -> Int -> e -> l
     write es = fromList ... write (listL es)
-    
-    {- |
-      @since 0.2.1
-      
-      @'before' es i e@ insert @e@ to @es@ before element with offset @i@. If
-      @i@ goes beyond the lower or upper bounds, @e@ is prepended or appended to
-      @es@ respectively.
-      
-      > before [0 .. 5] (-1) 7 == [7,0,1,2,3,4,5]
-      > before [0 .. 5]   0  7 == [7,0,1,2,3,4,5]
-      > before [0 .. 5]   3  7 == [0,1,2,7,3,4,5]
-      > before [0 .. 5]   5  7 == [0,1,2,3,4,7,5]
-      > before [0 .. 5]   6  7 == [0,1,2,3,4,5,7]
-      > before [0 .. 5]  19  7 == [0,1,2,3,4,5,7]
-    -}
-    before :: l -> Int -> e -> l
-    before es = fromList ... before (listL es)
     
     {- |
       @since 0.2.1
@@ -574,9 +479,15 @@ uncons xs = case uncons' xs of {Just res -> res; _ -> pfailEx "(:>)"}
 unsnoc :: Linear l e => l -> (l, e)
 unsnoc xs = case unsnoc' xs of {Just res -> res; _ -> pfailEx "(:<)"}
 
--- | Concatenation of two lines.
-(++) :: Linear l e => l -> l -> l
-(++) =  (<>)
+{- |
+  @iterate n f x@ returns sequence of @n@ applications of @f@ to @x@.
+  
+  Note that @iterate@ returns finite sequence, instead "Prelude" prototype.
+-}
+iterate :: Linear l e => Int -> (e -> e) -> e -> l
+iterate n =
+  let go c f e = c == 0 ? [] $ e : go (c - 1) f (f e)
+  in  fromListN n ... go (max 0 n)
 
 --------------------------------------------------------------------------------
 
@@ -1031,16 +942,6 @@ eachFrom :: Linear l e => Int -> Int -> l -> l
 eachFrom o n = each n . drop o
 
 {- |
-  @since 0.2.1
-  
-  @'after' es i e@ insert @e@ to @es@ after element with offset @i@.
-  
-  > after es i e == before es (i + 1) e
--}
-after :: Linear l e => l -> Int -> e -> l
-after es i = before es (i + 1)
-
-{- |
   @ascending es lengths@ checks if the subsequences of @es@ of lengths @lengths@
   is sorted.
 -}
@@ -1069,16 +970,6 @@ instance Linear [e] e
     
     init  = L.init
     last  = L.last
-    listL = toList
-    listR = L.reverse
-    
-    ofoldr f base =
-      let go !i es = case es of {x : xs -> f i x $ go (i + 1) xs; _ -> base}
-      in  go 0
-    
-    ofoldl f =
-      let go !i base es = case es of {x : xs -> go (i + 1) (f i base x) xs; _ -> base}
-      in  go 0
     
     single       = pure
     fromList     = id
@@ -1086,7 +977,7 @@ instance Linear [e] e
     fromFoldable = toList
     replicate    = L.replicate
     
-    (!^) = (L.!!)
+    (!!) = (L.!!)
     
     write es n e = n < 0 ? es $ go n es
       where
@@ -1095,24 +986,9 @@ instance Linear [e] e
     
     nubBy      = L.nubBy
     filter     = L.filter
-    concat     = L.concat
     reverse    = L.reverse
     unfoldr    = L.unfoldr
-    concatMap  = L.concatMap
     isSubseqOf = L.isSubsequenceOf
-    
-    sfoldr' = foldr'
-    sfoldl' = foldl'
-    sfoldr  = foldr
-    sfoldl  = foldl
-    
-    iterate n f e = n < 1 ? [] $ e : iterate (n - 1) f (f e)
-    
-    before es i e = go (max 0 i) es
-      where
-        go 0    xs    = e : xs
-        go n (x : xs) = x : go (n - 1) xs
-        go _    []    = [e]
     
     remove i es = i < 0 ? es $ go i es
       where
@@ -1140,61 +1016,10 @@ instance Linear [e] e
 
 --------------------------------------------------------------------------------
 
-{- Deprecated. -}
-
-{-# DEPRECATED o_foldr "in favour 'sfoldr'" #-}
-
--- | Same as 'sfoldr'.
-o_foldr :: Linear l e => (e -> b -> b) -> b -> l -> b
-o_foldr =  sfoldr
-
-{-# DEPRECATED o_foldl "in favour 'sfoldl'" #-}
-
--- | Same as 'sfoldl'.
-o_foldl :: Linear l e => (b -> e -> b) -> b -> l -> b
-o_foldl  =  sfoldl
-
-{-# DEPRECATED o_foldr' "in favour 'sfoldr''" #-}
-
--- | Same as 'sfoldr''.
-o_foldr' :: Linear l e => (e -> b -> b) -> b -> l -> b
-o_foldr' =  sfoldr'
-
-{-# DEPRECATED o_foldl' "in favour 'sfoldl''" #-}
-
--- | Same as 'sfoldl''.
-o_foldl' :: Linear l e => (b -> e -> b) -> b -> l -> b
-o_foldl' =  sfoldl'
-
-{-# DEPRECATED o_foldr1 "in favour 'sfoldr1'" #-}
-
--- | Same as 'sfoldr1'.
-o_foldr1 :: Linear l e => (e -> e -> e) -> l -> e
-o_foldr1 =  sfoldr1
-
-{-# DEPRECATED o_foldl1 "in favour 'sfoldl1'" #-}
-
--- | Same as 'sfoldl1'.
-o_foldl1 :: Linear l e => (e -> e -> e) -> l -> e
-o_foldl1  =  sfoldl1
-
-{-# DEPRECATED o_foldr1' "in favour 'sfoldr1''" #-}
-
--- | Same as 'sfoldr1''.
-o_foldr1' :: Linear l e => (e -> e -> e) -> l -> e
-o_foldr1' =  sfoldr1'
-
-{-# DEPRECATED o_foldl1' "in favour 'sfoldl1''" #-}
-
--- | Same as 'sfoldl1''.
-o_foldl1' :: Linear l e => (e -> e -> e) -> l -> e
-o_foldl1' =  sfoldl1'
-
---------------------------------------------------------------------------------
-
 unreachEx :: String -> a
 unreachEx =  throw . UnreachableException . showString "in SDP.Linear."
 
 pfailEx :: String -> a
 pfailEx =  throw . PatternMatchFail . showString "in SDP.Linear."
+
 

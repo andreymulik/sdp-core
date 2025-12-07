@@ -7,7 +7,7 @@
 
 {- |
     Module      :  SDP.Map
-    Copyright   :  (c) Andrey Mulik 2019-2022
+    Copyright   :  (c) Andrey Mulik 2019-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
@@ -20,7 +20,7 @@ module SDP.Map
   module SDP.Set,
   
   -- * Map
-  Map (..), Map1, Map2, union', difference', intersection',
+  Map (..), Map1, Map2, (!), (!?), union', difference', intersection',
   
 #ifdef SDP_QUALIFIED_CONSTRAINTS
   -- ** Rank 2 quantified constraints
@@ -41,7 +41,7 @@ import Control.Exception.SDP
 
 default ()
 
-infixl 9 .!, !, !?
+infixl 9 !, !?
 
 --------------------------------------------------------------------------------
 
@@ -53,37 +53,49 @@ infixl 9 .!, !, !?
   'Map' provides a set of operations on associative arrays that aren't specific
   to 'Linear' data structures and aren't limited by the 'Bordered' context
   (doesn't restrict key type).
+  
+  Note that as of @sdp-core-0.3@, the @toMap'@ function is no longer used. This
+  is because default element usage for an arbitrary key cannot be defined: for
+  structures with arbitrary keys this doesn't make sense. For the same reason,
+  it's recommended to avoid 'toMap' in cases where you need a 'Bordered'
+  structure.
 -}
 class (Eq key, Nullable map) => Map map key e | map -> key, map -> e
   where
-    {-# MINIMAL toMap', ((.!) | (!?)) #-}
+    {-# MINIMAL toMap, (unsafeReadByKey|eitherReadByKey) #-}
     
     {- Create, view and update Map. -}
     
     -- | Returns list of associations @(index, element)@.
-    default assocs :: (Bordered map key, Linear map e) => map -> [(key, e)]
+    default assocs :: Linear map e => map -> [(key, e)]
     assocs :: map -> [(key, e)]
-    assocs es = indices es `zip` listL es
+    assocs es = keys es `zip` listL es
     
     {- |
-      A less specific version of 'SDP.Indexed.Indexed.assoc' that creates a new
+      A less specific version of 'SDP.Indexed.Indexed.assoc' which creates a new
       associative array. For 'Linear' structures without gaps, it may be less
       effective.
       
       > Z // ascs = toMap -- forall ascs
+      
+      For structures with arbitrary keys, such as @HashMap@, @'toMap' ascs@
+      creates all and only the elements specified in @ascs@.
+      
+      For 'Bordered' structures 'toMap' calculates the minimum bounds within
+      which elements with all specified indices can be stored.
+      
+      For non-sparse 'Bordered' structures (i.e. requiring all elements in
+      bounds to be stored), it fills the missing elements with an 'UndefinedValue'
+      exception (if posible) or default value. For structures that store elements
+      strictly, it may fail with 'UndefinedValue'.
+      
+      If there are duplicate keys in the list, the resulting structure will
+      contain the last value specified for that key.
+      
+      For the @'SDP.Index.Index' key@, there is an 'SDP.Indexed.Indexed' class
+      with an 'SDP.Indexed.assoc' function.
     -}
     toMap :: [(key, e)] -> map
-    toMap =  toMap' (undEx "toMap {default}")
-    
-    {- |
-      Strict version of 'toMap' with default value.
-      
-      Note that the default value is set only for elements included in the range
-      of the created structure and will not be set for values outside its range
-      (when expanding, concatenating, etc.) for most structures since they don't
-      store it.
-    -}
-    toMap' :: e -> [(key, e)] -> map
     
     -- | Filter with key.
     filter' :: (key -> e -> Bool) -> map -> map
@@ -100,8 +112,9 @@ class (Eq key, Nullable map) => Map map key e | map -> key, map -> e
     {- Keys. -}
     
     -- | Returns list of map keys.
+    default keys :: Bordered map key => map -> [key]
     keys :: map -> [key]
-    keys =  fsts . assocs
+    keys =  indices
     
     -- | @'member'' key map@ checks if @key@ in @map@.
     default member' :: Bordered map key => key -> map -> Bool
@@ -223,25 +236,20 @@ class (Eq key, Nullable map) => Map map key e | map -> key, map -> e
     
     {- Read element. -}
     
-    -- | @('.!')@ is unsafe reader, can be faster @('!')@ by skipping checks.
-    {-# INLINE (.!) #-}
-    (.!) :: map -> key -> e
-    (.!) =  (undEx "(.!)" +?) ... (!?)
+    -- | 'unsafeReadByKey' is unsafe reader, can be faster @('!')@ by skipping checks.
+    {-# INLINE unsafeReadByKey #-}
+    unsafeReadByKey :: map -> key -> e
+    unsafeReadByKey =  (!)
     
-    -- | @('!')@ is well-safe reader, may 'throw' 'IndexException'.
-    default (!) :: Bordered map key => map -> key -> e
-    (!) :: map -> key -> e
-    (!) es i = case inBounds (bounds es) i of
-        IN -> es .! i
-        ER -> empEx   msg
-        OR -> overEx  msg
-        UR -> underEx msg
+    default eitherReadByKey :: Bordered map key => map -> key -> Either IndexException e
+    eitherReadByKey :: map -> key -> Either IndexException e
+    eitherReadByKey es key = case inBounds (bounds es) key of
+        IN -> Right $ unsafeReadByKey es key
+        UR -> Left  $ IndexUnderflow msg
+        OR -> Left  $ IndexOverflow  msg
+        ER -> Left  $ EmptyRange     msg
       where
-        msg = "(!) {default}"
-    
-    -- | @('!?')@ is completely safe, but very boring function.
-    (!?) :: map -> key -> Maybe e
-    (!?) es = flip member' es ?+ (es .!)
+        msg = "in SDP.Map.eitherReadByKey {default}"
     
     {- Lookup by key. -}
     
@@ -319,10 +327,10 @@ type Map'' map = forall key e . Map (map key e) key e
 
 instance Map [e] Int e
   where
-    toMap' e = snds . fill . setWith cmpfst
+    toMap = snds . fill . groupSetWith cmpfst (\ _ o2 -> o2)
       where
         fill (ix@(i1, _) : iy@(i2, _) : ies) =
-          let rest = i1 + 1 == i2 ? iy : ies $ (i1 + 1, e) : iy : ies
+          let rest = i1 + 1 == i2 ? iy : ies $ (i1 + 1, undEx "toMap") : iy : ies
           in  ix : fill rest
         fill xs = xs
     
@@ -331,26 +339,21 @@ instance Map [e] Int e
     insert' k e es = k < 0 ? es $ go k es
       where
         go 0    []    = [e]
-        go 0 (_ : xs) = xs
+        go 0 (_ : xs) = e : xs
         go i (x : xs) = x : go (i - 1) xs
-        go i    _     = err : go (i - 1) []
-        
-        err = undEx "insert'"
+        go i    _     = undEx "insert'" : go (i - 1) []
     
-    (x : xs) .! n = n == 0 ? x $ xs .! (n - 1)
-    _        .! _ = error "in SDP.Map.(.!)"
+    unsafeReadByKey es n = case n <=> 0 of
+      GT | _ : xs <- es -> unsafeReadByKey xs (n - 1)
+      EQ | x :  _ <- es -> x
+      
+      _ -> undEx "unsafeReadByKey"
     
-    (!) [] _ = empEx "(!)"
-    (!) es n = n >= 0 ? es !# n $ underEx "(!)"
-      where
-        []       !# _  = overEx "(!)"
-        (x : xs) !# n' = n' == 0 ? x $ xs !# (n' - 1)
-    
-    []       !? _ = Nothing
-    (x : xs) !? n = case n <=> 0 of
-      GT -> xs !? (n - 1)
-      EQ -> Just x
-      LT -> Nothing
+    delete' o =
+      let go 0 (_ : xs) = undEx "delete'" : xs
+          go i (x : xs) = x : go (i + 1) xs
+          go _        _ = overEx "delete'"
+      in  o < 0 ? underEx "delete'" $ go o
     
     xs // es = snds $ unionWith cmpfst (setWith cmpfst es) (assocs xs)
     
@@ -367,8 +370,15 @@ instance Map [e] Int e
 
 --------------------------------------------------------------------------------
 
-empEx :: String -> a
-empEx =  throw . EmptyRange . showString "in SDP.Map."
+-- | @('!')@ is well-safe reader, may 'throw' 'IndexException'.
+(!) :: Map map key e => map -> key -> e
+(!) es key = case eitherReadByKey es key of {Right e -> e; Left msg -> throw msg}
+
+-- | @('!?')@ is completely safe, but very boring function.
+(!?) :: Map map key e => map -> key -> Maybe e
+es !? key = case eitherReadByKey es key of {Right e -> Just e; _ -> Nothing}
+
+--------------------------------------------------------------------------------
 
 undEx :: String -> a
 undEx =  throw . UndefinedValue . showString "in SDP.Map."

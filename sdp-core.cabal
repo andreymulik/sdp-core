@@ -90,10 +90,6 @@ Library
   if impl(ghc >= 8.6)
     cpp-options: -DSDP_QUALIFIED_CONSTRAINTS
   
-  -- GHC 8.0.2 bug
-  if impl(ghc == 8.0.2)
-    cpp-options: -DSDP_DISABLE_SHAPED
-  
   exposed-modules:
     -- Commons
     SDP.SafePrelude
@@ -110,21 +106,28 @@ Library
     
     -- Classes
     SDP.Forceable
-    SDP.Estimate
-    SDP.Bordered
     SDP.Nullable
+    SDP.Bordered
+    SDP.Estimate
+    SDP.Concat
+    
+    SDP.SequenceM
     SDP.IndexedM
     SDP.LinearM
-    SDP.Unboxed
+    SDP.MapM
+    SDP.ZipM
+    
+    SDP.Sequence
     SDP.Indexed
     SDP.Linear
-    SDP.Index
-    SDP.Shape
-    SDP.MapM
-    SDP.Scan
-    SDP.Sort
     SDP.Map
     SDP.Zip
+    
+    SDP.Unboxed
+    SDP.Index
+    SDP.Shape
+    SDP.Sort
+    SDP.Scan
     SDP.Set
     
     -- Service definitions
@@ -146,5 +149,7 @@ Library
     
     -- Unboxed class with instances
     SDP.Unboxed.Class
+
+
 
 

@@ -3,7 +3,7 @@
 
 {- |
     Module      :  SDP.SafePrelude
-    Copyright   :  (c) Andrey Mulik 2019-2022
+    Copyright   :  (c) Andrey Mulik 2019-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  portable
@@ -37,6 +37,7 @@ module SDP.SafePrelude
 #endif
   
   module Data.Functor.Classes,
+  module Data.List.NonEmpty,
   module Data.Bifunctor,
   module Data.Foldable,
   
@@ -88,7 +89,7 @@ import Data.Semigroup ( Semigroup (..) ) -- For base >= 4.9 && < 4.11
 #endif
 
 import Data.Functor.Classes
-
+import Data.List.NonEmpty ( NonEmpty (..), (<|) )
 import Data.Bifunctor
 import Data.Foldable hiding ( foldrM, foldlM, concat, concatMap )
 
@@ -170,6 +171,5 @@ whenJust =  maybe (return ())
 -- | 'stToMIO' is just @'liftIO' . 'stToIO'@.
 stToMIO :: MonadIO io => ST RealWorld e -> io e
 stToMIO =  liftIO . stToIO
-
 
 

@@ -7,7 +7,7 @@
 
 {- |
     Module      :  SDP.MapM
-    Copyright   :  (c) Andrey Mulik 2020-2023
+    Copyright   :  (c) Andrey Mulik 2020-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  portable
@@ -17,7 +17,8 @@
 module SDP.MapM
 (
   -- * Mutable maps
-  MapM (..), MapM1, MapM2, fromMap', unionM', differenceM', intersectionM',
+  MapM (..), MapM1, MapM2, fromMap', fromMap, fromMapM, fromKeyMap, fromKeyMapM,
+  (!>), (!?>), unionM', differenceM', intersectionM',
   
 #ifdef SDP_QUALIFIED_CONSTRAINTS
   -- ** Rank 2 quantified constraints
@@ -33,19 +34,23 @@ import SDP.LinearM
 import SDP.Map
 
 import Data.Maybe ( listToMaybe )
+import Data.Functor
 
 import Control.Exception.SDP
 
 default ()
 
-infixl 5 >!, !>, !?>
+infixl 5 !>, !?>
 
 --------------------------------------------------------------------------------
 
 -- | 'MapM' is class of mutable associative arrays.
 class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
   where
-    {-# MINIMAL newMap', overwrite, ((>!)|(!?>)), kfoldrM, kfoldlM #-}
+    {-# MINIMAL newMap', overwrite, kfoldrM, kfoldlM,
+                (unsafeReadMByKey|eitherReadMByKey) #-}
+    
+    {- Basics. -}
     
     -- | 'getAssocs' is version of 'SDP.Map.assocs' for mutable maps.
     default getAssocs :: LinearM m map e => map -> m [(key, e)]
@@ -59,6 +64,18 @@ class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
     -- | Create new mutable map from list of @(key, element)@ associations.
     newMap' :: e -> [(key, e)] -> m map
     
+    -- | Returns list of map keys.
+    default getKeys :: BorderedM m map key => map -> m [key]
+    getKeys :: map -> m [key]
+    getKeys =  getIndices
+    
+    -- | Checks if key in map.
+    default memberM' :: BorderedM m map key => map -> key -> m Bool
+    memberM' :: map -> key -> m Bool
+    memberM' =  nowIndexIn
+    
+    {- Filtering. -}
+    
     -- | 'mfilter' with key.
     mfilter' :: (key -> e -> Bool) -> map -> m map
     mfilter' f = newMap <=< kfoldrM (\ k x xs -> return (f k x ? (k, x) : xs $ xs)) []
@@ -68,6 +85,8 @@ class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
     filterM' f = newMap <=< kfoldrM (\ k x xs ->
         f k x ?^ return ((k, x) : xs) $ return xs
       ) []
+    
+    {- Map update. -}
     
     {- |
       @'overwrite' es ascs@ - analog of @('//')@ for mutable data structures,
@@ -106,15 +125,7 @@ class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
         (: ies) . (,) key <$> go key e
       ) [] es
     
-    -- | Returns list of map keys.
-    default getKeys :: BorderedM m map key => map -> m [key]
-    getKeys :: map -> m [key]
-    getKeys =  getIndices
-    
-    -- | Checks if key in map.
-    default memberM' :: BorderedM m map key => map -> key -> m Bool
-    memberM' :: map -> key -> m Bool
-    memberM' =  nowIndexIn
+    {- Set-like operations. -}
     
     {- |
       @unionM'' f xs ys@ returns the union of the @xs@ and @ys@ map by keys. If
@@ -171,6 +182,8 @@ class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
           EQ -> (i, f i x y) : go xs ys
         go _ _ = []
     
+    {- Folds with key. -}
+    
     -- | 'kfoldrM' is right monadic fold with key.
     kfoldrM :: (key -> e -> acc -> m acc) -> acc -> map -> m acc
     kfoldrM f base = foldr ((=<<) . uncurry f) (pure base) <=< getAssocs
@@ -189,16 +202,32 @@ class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
     kfoldlM' :: (key -> acc -> e -> m acc) -> acc -> map -> m acc
     kfoldlM' f = kfoldlM (\ !i !r e -> f i r e)
     
+    {- Read and write. -}
+    
     {- |
       @since 0.3
       
-      @insertM' key e es@ inserts or replaces the @e@ value with the key @key@
-      to the @es@ map. For fixed-size structures, 'insertM'' works like
-      'writeM'' and cannot add new element with @key@ beyond specified bounds.
+      'unsafeReadMByKey' is unsafe monadic reader.
     -}
-    default insertM' :: Bordered map key => map -> key -> e -> m ()
-    insertM' :: map -> key -> e -> m ()
-    insertM' =  writeM'
+    {-# INLINE unsafeReadMByKey #-}
+    default unsafeReadMByKey :: MonadFail m => map -> key -> m e
+    unsafeReadMByKey :: map -> key -> m e
+    unsafeReadMByKey =  (!>)
+    
+    {- |
+      @since 0.3
+      
+      'eitherReadMByKey' is safe monadic reader.
+    -}
+    default eitherReadMByKey :: BorderedM m map key => map -> key -> m (Either IndexException e)
+    eitherReadMByKey :: map -> key -> m (Either IndexException e)
+    eitherReadMByKey es key = let msg = "eitherReadMByKey {default}" in do
+      bnds <- getBounds es
+      case inBounds bnds key of
+        UR -> return . Left $ IndexUnderflow msg
+        OR -> return . Left $ IndexOverflow  msg
+        ER -> return . Left $ EmptyRange     msg
+        IN -> Right <$> (unsafeReadMByKey es key)
     
     {- |
       @since 0.3
@@ -216,13 +245,26 @@ class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
     writeM' :: map -> key -> e -> m ()
     writeM' es i e = do bnds <- getBounds es; writeM es (offset bnds i) e
     
+    {- Insert, update, delete items. -}
+    
+    {- |
+      @since 0.3
+      
+      @insertM' key e es@ inserts or replaces the @e@ value with the key @key@
+      to the @es@ map. For fixed-size structures, 'insertM'' works like
+      'writeM'' and cannot add new element with @key@ beyond specified bounds.
+    -}
+    default insertM' :: Bordered map key => map -> key -> e -> m ()
+    insertM' :: map -> key -> e -> m ()
+    insertM' =  writeM'
+    
     {- |
       @since 0.3
       
       Update element by given function. Earlier defined in "SDP.IndexedM".
     -}
     updateM' :: map -> (e -> e) -> key -> m ()
-    updateM' es f i = writeM' es i . f =<< es >! i
+    updateM' es f i = writeM' es i . f =<< unsafeReadMByKey es i
     
     {- |
       @since 0.3
@@ -235,47 +277,7 @@ class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
     deleteM' :: map -> key -> m ()
     deleteM' es key = writeM' es key (empEx "deleteM': value is removed")
     
-    -- | @('>!')@ is unsafe monadic reader.
-    {-# INLINE (>!) #-}
-    (>!) :: map -> key -> m e
-    (>!) =  fmap (undEx "(!) {default}" +?) ... (!?>)
-    
-    -- | @('!>')@ is well-safe monadic reader.
-    {-# INLINE (!>) #-}
-    default (!>) :: BorderedM m map key => map -> key -> m e
-    (!>) :: map -> key -> m e
-    es !> i = do
-      let msg = "(!>) {default}"
-      bnds <- getBounds es
-      case inBounds bnds i of
-        IN -> es >! i
-        ER -> empEx   msg
-        OR -> overEx  msg
-        UR -> underEx msg
-    
-    -- | @('!?>')@ is completely safe monadic reader.
-    (!?>) :: map -> key -> m (Maybe e)
-    es !?> i = do b <- memberM' es i; b ? Just <$> (es >! i) $ pure empty
-    
-    -- | Create mutable map from immutable.
-    fromMap :: Map map' key e => map' -> (e -> e) -> m map
-    fromMap es f = newMap $ kfoldr (\ key e -> (:) (key, f e)) [] es
-    
-    -- | Create mutable map from another mutable.
-    fromMapM :: MapM m map' key e => map' -> (e -> m e) -> m map
-    fromMapM es go = newMap =<< kfoldrM (\ key val ies ->
-        (\ e -> (key, e) : ies) <$> go val
-      ) [] es
-    
-    -- | Create mutable map from immutable.
-    fromKeyMap :: Map map' key e => map' -> (key -> e -> e) -> m map
-    fromKeyMap es f = newMap $ kfoldr (\ key e -> (:) (key, f key e)) [] es
-    
-    -- | Create mutable map from another mutable.
-    fromKeyMapM :: Map map' key e => map' -> (key -> e -> m e) -> m map
-    fromKeyMapM es go = newMap =<< kfoldr (\ key ->
-        liftA2 ((:) . (,) key) . go key
-      ) (return []) es
+    {- key search. -}
     
     -- | @('.?')@ is monadic version of @('.$')@.
     (.?) :: (e -> Bool) -> map -> m (Maybe key)
@@ -287,9 +289,49 @@ class (Monad m, Eq key) => MapM m map key e | map -> m, map -> key, map -> e
 
 --------------------------------------------------------------------------------
 
+{- Element by key access. -}
+
+-- | @('!>')@ is well-safe monadic reader.
+(!>) :: (MapM m map key e, MonadFail m) => map -> key -> m e
+es !> i = eitherReadMByKey es i >>= \ res -> case res of
+  Left  err -> fail (show err)
+  Right   e -> return e
+
+-- | @('!?>')@ is completely safe monadic reader.
+(!?>) :: MapM m map key e => map -> key -> m (Maybe e)
+es !?> i = eitherReadMByKey es i <&> \ res -> case res of
+  Right e -> Just e
+  _       -> Nothing
+
+--------------------------------------------------------------------------------
+
+{- Extra map creation. -}
+
+-- | Create mutable map from immutable.
+fromMap :: (MapM m map key e, Map map' key e) => map' -> (e -> e) -> m map
+fromMap es f = newMap $ kfoldr (\ key e -> (:) (key, f e)) [] es
+
+-- | Create mutable map from immutable.
+fromKeyMap :: (MapM m map key e, Map map' key e) => map' -> (key -> e -> e) -> m map
+fromKeyMap es f = newMap $ kfoldr (\ key e -> (:) (key, f key e)) [] es
+
+-- | Create mutable map from another mutable.
+fromKeyMapM :: (MapM m map key e, Map map' key e) => map' -> (key -> e -> m e) -> m map
+fromKeyMapM es go = newMap =<< kfoldr (\ key ->
+    liftA2 ((:) . (,) key) . go key
+  ) (return []) es
+
 -- | Create mutable map from another mutable.
 fromMap' :: (MapM m map' key e, MapM m map key e) => map' -> (e -> e) -> m map
 fromMap' es f = fromMapM es (return . f)
+
+-- | Create mutable map from another mutable.
+fromMapM :: (MapM m map key e, MapM m map' key e) => map' -> (e -> m e) -> m map
+fromMapM es go = newMap =<< kfoldrM (\ key val ies ->
+    (\ e -> (key, e) : ies) <$> go val
+  ) [] es
+
+--------------------------------------------------------------------------------
 
 {- |
   @since 0.3
@@ -338,13 +380,6 @@ empEx =  throw . EmptyRange . showString "in SDP.MapM."
 
 undEx :: String -> a
 undEx =  throw . UndefinedValue . showString "in SDP.MapM."
-
-overEx :: String -> a
-overEx =  throw . IndexOverflow . showString "in SDP.MapM."
-
-underEx :: String -> a
-underEx =  throw . IndexUnderflow . showString "in SDP.MapM."
-
 
 
 

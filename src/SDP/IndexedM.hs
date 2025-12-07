@@ -7,7 +7,7 @@
 
 {- |
     Module      :  SDP.IndexedM
-    Copyright   :  (c) Andrey Mulik 2019-2022
+    Copyright   :  (c) Andrey Mulik 2019-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
@@ -41,6 +41,8 @@ import SDP.LinearM
 import SDP.Indexed
 import SDP.MapM
 
+import Data.Functor
+
 import Control.Exception.SDP
 
 default ()
@@ -70,7 +72,11 @@ class (LinearM m v e, BorderedM m v i, MapM m v i e) => IndexedM m v i e
     
     -- | Just swap two elements.
     swapM' :: v -> i -> i -> m ()
-    swapM' es i j = do ei <- es >! i; writeM' es i =<< es >! j; writeM' es j ei
+    swapM' es i j = do
+      ei <- unsafeReadMByKey es i
+      ej <- unsafeReadMByKey es j
+      writeM' es i ej
+      writeM' es j ei
     
     -- | fromIndexed' is overloaded version of thaw.
     fromIndexed' :: Indexed v' j e => v' -> m v
@@ -82,16 +88,16 @@ class (LinearM m v e, BorderedM m v i, MapM m v i e) => IndexedM m v i e
     reshaped :: IndexedM m v' j e => (i, i) -> v' -> (i -> j) -> m v
     reshaped bnds es f = do
       es' <- fromAssocs bnds []
-      es' <$ mupdate es' (\ i _ -> es !> f i)
+      es' <$ mupdate es' (\ i _ -> unsafeReadMByKey es $ f i)
     
     {- |
       @'fromAccum' f es ies@ create a new structure from @es@ elements
       selectively updated by function @f@ and @ies@ associations list.
     -}
     fromAccum :: (e -> e' -> e) -> v -> [(i, e')] -> m v
-    fromAccum f es ascs = getBounds es >>=<< ies $ fromAssocs
-      where
-        ies = sequence [ do e <- es !> i; return (i, f e e') | (i, e') <- ascs ]
+    fromAccum f es ascs =
+      let update_ = mapM $ \ (i, e') -> unsafeReadMByKey es i <&> \ e -> (i, f e e')
+      in  getBounds es >>=<< update_ ascs $ fromAssocs
 
 --------------------------------------------------------------------------------
 
@@ -145,6 +151,7 @@ type Thaw'' m v v' = forall i e . Thaw m (v i e) (v' i e)
 
 undefEx :: String -> e
 undefEx =  throw . UndefinedValue . showString "in SDP.IndexedM."
+
 
 
 

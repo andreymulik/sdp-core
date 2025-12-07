@@ -53,7 +53,7 @@ default ()
 -- | 'Indexed' is class of ordered associative arrays with static bounds.
 class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i e
   where
-    {-# MINIMAL fromIndexed #-}
+    {-# MINIMAL assoc', fromIndexed #-}
     
     {- |
       @assoc bnds ascs@ create new structure from list of @(key, value)@ pairs,
@@ -61,7 +61,7 @@ class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i e
       match with the result bounds (not always possible).
     -}
     assoc :: (i, i) -> [(i, e)] -> v
-    assoc =  assoc' (undEx "assoc {default}")
+    assoc bnds = toMap . filter (inRange bnds . fst)
     
     {- |
       @assoc' def bnds ascs@ creates new structure from list of associations
@@ -69,7 +69,6 @@ class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i e
       with the result bounds (not always possible).
     -}
     assoc' :: e -> (i, i) -> [(i, e)] -> v
-    assoc' def bnds = toMap' def . filter (inRange bnds . fst)
     
     -- | 'fromIndexed' converts this indexed structure to another one.
     fromIndexed :: Indexed m j e => m -> v
@@ -88,12 +87,12 @@ class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i e
     {- |
       @since 0.3
       
-      @es !! ij@ returns subshape @ij@ of @es@.
+      @'subshapeOf' es ij@ returns subshape @ij@ of @es@.
     -}
-    (!!) :: (Indexed2 s i e, Indexed2 s j e, SubIndex i j)
-         => v -> i :|: j -> s j e
+    subshapeOf :: (Indexed2 s i e, Indexed2 s j e, SubIndex i j)
+               => v -> i :|: j -> s j e
     
-    es !! ij = toMap $ kfoldr (\ i e ies ->
+    subshapeOf es ij = toMap $ kfoldr (\ i e ies ->
         let (ij', j) = splitDim i
         in  ij' == ij ? (j, e) : ies $ ies
       ) [] es
@@ -103,10 +102,10 @@ class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i e
       
       Returns list of @es@ subshapes.
     -}
-    slices :: (Indexed2 s (i :|: j) (s j e), Indexed2 s j e, SubIndex i j)
-           => v -> s (i :|: j) (s j e)
+    slicesOf :: (Indexed2 s (i :|: j) (s j e), Indexed2 s j e, SubIndex i j)
+             => v -> s (i :|: j) (s j e)
     
-    slices es = let ((ls, l), (us, u)) = splitDim `both` bounds es in assoc (ls, us)
+    slicesOf es = let ((ls, l), (us, u)) = splitDim `both` bounds es in assoc (ls, us)
         [
           (ij, assoc (l, u) ies)
         | (ij, ies) <- size (ls, us) `unpick` offset (ls, us) $ kfoldr
@@ -122,54 +121,18 @@ class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i e
             => s (i :|: j) (s j e) -> v
     
     unslice = toMap . kfoldr (\ i -> (++) . (first (`joinDim` i) <$>) . assocs) []
-    
-#ifndef SDP_DISABLE_SHAPED
-    {- |
-      @since 0.3
-      
-      Stricter version of @('!!')@, returns a subshape of the same type.
-      
-      __NOTE:__ for GHC > 8.0.* # works fine in 8.0.1, but fails in 8.0.2
-    -}
-    (!!!) ::
-      (
-        Indexed2 s (i :|: j) (s j e), Indexed2 s j e, SubIndex i j, s i e ~ v
-      ) => s i e -> i :|: j -> s j e
-    (!!!) =  (!!)
-    
-    {- |
-      @since 0.3
-      
-      Stricter version of 'slices', returns list of subshapes of the same type.
-      
-      __NOTE:__ for GHC > 8.0.* # works fine in 8.0.1, but fails in 8.0.2
-    -}
-    slices' ::
-      (
-        Indexed2 s (i :|: j) (s j e), Indexed2 s j e, SubIndex i j, s i e ~ v
-      ) => s i e -> s (i :|: j) (s j e)
-    slices' =  slices
-    
-    {- |
-      @since 0.3
-      
-      Stricter version of 'unslice', creates structure from list of subshapes of
-      the same type.
-      
-      __NOTE:__ for GHC > 8.0.* # works fine in 8.0.1, but fails in 8.0.2
-    -}
-    unslice' ::
-      (
-        Indexed2 s (i :|: j) (s j e), Indexed2 s j e, SubIndex i j, s i e ~ v
-      ) => s (i :|: j) (s j e) -> s i e
-    unslice' =  unslice
-#endif
 
 --------------------------------------------------------------------------------
 
 instance Indexed [e] Int e
   where
-    assoc'  e bnds = toMap' e . filter (inRange bnds . fst)
+    assoc' e _ = snds . fill . setWith cmpfst
+      where
+        fill (ix@(i1, _) : iy@(i2, _) : ies) =
+          let rest = i1 + 1 == i2 ? iy : ies $ (i1 + 1, e) : iy : ies
+          in  ix : fill rest
+        fill xs = xs
+    
     fromIndexed es = (es !) <$> indices es
 
 --------------------------------------------------------------------------------
@@ -247,4 +210,6 @@ unpick (I# n#) f es = runST $ ST $ \ s1# -> case newArray# n# [] s1# of
 
 undEx :: String -> a
 undEx =  throw . UndefinedValue . showString "in SDP.Indexed."
+
+
 

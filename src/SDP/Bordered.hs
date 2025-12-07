@@ -7,7 +7,7 @@
 
 {- |
     Module      :  SDP.Bordered
-    Copyright   :  (c) Andrey Mulik 2021-2022
+    Copyright   :  (c) Andrey Mulik 2021-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
@@ -371,14 +371,14 @@ instance (Monad m, Index i) => BorderedM m (i, i) i
     nowIndexIn  = return ... inRange
     getOffsetOf = return ... offset
     
-    getEitherViewOf bnds es = pure $ eitherViewOf bnds es
+    getEitherViewOf = pure ... eitherViewOf
 
 instance Monad m => BorderedM m [e] Int
   where
     getLower  _ = return 0
     getUpper es = return (length es - 1)
     
-    getEitherViewOf bnds es = pure $ eitherViewOf bnds es
+    getEitherViewOf = pure ... eitherViewOf
 
 
 
