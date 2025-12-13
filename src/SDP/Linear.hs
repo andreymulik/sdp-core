@@ -108,12 +108,12 @@ infixl 9 !!
 
 --------------------------------------------------------------------------------
 
-{-# WARNING uncons "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
-{-# WARNING unsnoc "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
-{-# WARNING head   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
-{-# WARNING tail   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
-{-# WARNING init   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
-{-# WARNING last   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
+{-# WARNING in "x-partial" uncons "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
+{-# WARNING in "x-partial" unsnoc "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
+{-# WARNING in "x-partial" head   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
+{-# WARNING in "x-partial" tail   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.uncons' instead." #-}
+{-# WARNING in "x-partial" init   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
+{-# WARNING in "x-partial" last   "This is a partial function, it throws an error on empty lists. Use pattern matching, 'Data.List.unsnoc' instead." #-}
 
 {- |
   'Linear' is one of the main SDP classes, a class of linear data structures.
