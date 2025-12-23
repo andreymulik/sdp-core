@@ -9,7 +9,7 @@
 
 {- |
     Module      :  SDP.Indexed
-    Copyright   :  (c) Andrey Mulik 2019-2022
+    Copyright   :  (c) Andrey Mulik 2019-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
@@ -81,8 +81,8 @@ class (Linear v e, Bordered v i, Map v i e) => Indexed v i e | v -> i e
       @'accum' f es ies@ create a new structure from @es@ elements selectively
       updated by function @f@ and @ies@ associations list.
     -}
-    accum :: (e -> e' -> e) -> v -> [(i, e')] -> v
-    accum f es ascs = bounds es `assoc` [ (i, es!i `f` e') | (i, e') <- ascs ]
+    accum :: (e -> x -> e) -> v -> [(i, x)] -> v
+    accum f es ascs = es // [ (i, f (es!i) x) | (i, x) <- ascs ]
     
     {- |
       @since 0.3
@@ -133,7 +133,7 @@ instance Indexed [e] Int e
           in  ix : fill rest
         fill xs = xs
     
-    fromIndexed es = (es !) <$> indices es
+    fromIndexed = listL
 
 --------------------------------------------------------------------------------
 
