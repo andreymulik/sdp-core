@@ -8,7 +8,7 @@
 
 {- |
     Module      :  SDP.Set
-    Copyright   :  (c) Andrey Mulik 2019-2022
+    Copyright   :  (c) Andrey Mulik 2019-2025
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC Extensions)
@@ -58,7 +58,7 @@ default ()
   (comparability, transitivity, reflexivity and antisymmetry). With wrong
   comparator, the result may become implementation-dependent.
 -}
-class Nullable s => SetWith s o | s -> o
+class (Estimate s, Sequence s o) => SetWith s o
   where
     {-# MINIMAL intersectionWith, unionWith, differenceWith,
       lookupLTWith, lookupGTWith #-}
@@ -172,7 +172,7 @@ class Nullable s => SetWith s o | s -> o
   
   'Set', as well as 'SetWith', doesn't provide data protection/validation.
 -}
-class Nullable s => Set s o | s -> o
+class (Estimate s, Sequence s o) => Set s o
   where
     -- | The same as @'setWith' 'compare'@.
     default set :: (SetWith s o, Ord o) => s -> s
