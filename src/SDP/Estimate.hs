@@ -56,6 +56,8 @@ import SDP.Index
 
 import Data.Functor.Classes
 
+import Control.Exception.SDP
+
 default ()
 
 infixl 4 <==>, .<., .>., .<=., .>=., .==., ./=.,
@@ -100,7 +102,7 @@ data SizeHint = SizeHint   {-# UNPACK #-} !Int {-# UNPACK #-} !Int
 -}
 class Estimate e
   where
-    {-# MINIMAL sizeOf, (<.=>), (<==>) #-}
+    {-# MINIMAL sizeOf, (<.=>), (<==>), shrinkTo #-}
     
     -- | Faster, but less precise version of 'SDP.Bordered.Bordered.sizeOf'.
     sizeHint :: e -> Maybe SizeHint
@@ -108,6 +110,14 @@ class Estimate e
     
     -- | Returns actual size of structure.
     sizeOf :: e -> Int
+    
+    {- |
+      @since 0.3
+      
+      @ss = shrinkTo n es@ returns @ss@ - slice of @es@ with @'sizeOf' ss <= n@
+      containing the first n elements (or less).
+    -}
+    shrinkTo :: Int -> e -> e
     
     -- | Compare structure length with given number.
     (<.=>) :: e -> Int -> Ordering
@@ -148,12 +158,22 @@ class Estimate e
 class Monad m => EstimateM m e
   where
     getSizeHint :: e -> m (Maybe SizeHint)
-    getSizeHint =  const $ return Z
+    getSizeHint =  const $ return Nothing
     
     -- | 'getSizeOf' returns size'of mutable data structure.
     default getSizeOf :: Estimate e => e -> m Int
     getSizeOf :: e -> m Int
     getSizeOf =  return . sizeOf
+    
+    {- |
+      @since 0.3
+      
+      @ss = shrinkMTo n es@ returns @ss@ - slice of @es@ with @'sizeOf' ss <= n@
+      containing the first n elements (or less).
+    -}
+    default shrinkMTo :: Estimate e => Int -> e -> m e
+    shrinkMTo :: Int -> e -> m e
+    shrinkMTo =  pure ... shrinkTo
     
     -- | Compare pair of structures by length.
     default (<<=>>) :: Estimate e => e -> e -> m Ordering
@@ -258,6 +278,12 @@ instance Index i => Estimate (i, i)
     sizeHint = Just . SizeHintEQ . size
     sizeOf   = size
     
+    shrinkTo n bnds@(l, _)
+      | isEmpty  bnds = bnds
+      |   n >. bnds   = expandEx bnds
+      |     n < 1     = defaultBounds 0
+      |     True      = (l, index bnds (n - 1))
+    
     (<==>) = on (<=>) size
     (.<=.) = on (<=)  size
     (.>=.) = on (>=)  size
@@ -300,6 +326,8 @@ instance Estimate [a]
     sizeHint [] = Just (SizeHintEQ 0)
     sizeHint  _ = Just (SizeHintGE 1)
     
+    shrinkTo = take
+    
     [] <==> [] = EQ
     [] <==>  _ = LT
     _  <==> [] = GT
@@ -315,6 +343,13 @@ instance Monad m => EstimateM m [a]
     
     (<<=>>) = return ... (<==>)
     (<=>>)  = return ... (<.=>)
+
+--------------------------------------------------------------------------------
+
+expandEx :: Index i => (i, i) -> err
+expandEx bnds = throw . UnacceptableExpansion
+              . showString "in SDP.Bordered.eitherViewOf: new borders "
+              $ shows bnds " can't be wider than range of list values"
 
 
 
