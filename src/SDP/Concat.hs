@@ -1,4 +1,5 @@
-{-# LANGUAGE Safe, CPP, MultiParamTypeClasses, FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleContexts #-}
+{-# LANGUAGE Safe, CPP, TypeFamilies #-}
 
 {- |
     Module      :  SDP.Concat
@@ -15,10 +16,10 @@ module SDP.Concat
   module SDP.Nullable,
   
   -- * Concat class
-  Concat (..), (++),
+  Concat (..), Buffer (..), (++),
   
   -- * ConcatM class
-  ConcatM (..)
+  ConcatM (..), BufferM (..)
 )
 where
 
@@ -27,6 +28,7 @@ import SDP.SafePrelude
 import SDP.Nullable
 
 import qualified Data.List as L
+import Data.Kind
 
 default ()
 
@@ -63,11 +65,31 @@ class
     concatMap :: Foldable f => (a -> l) -> f a -> l
     concatMap =  foldMap
 
+--------------------------------------------------------------------------------
+
+-- | Same as @('<>')@, concatenation of two structures.
 (++) :: Concat l => l -> l -> l
 (++) =  (<>)
 
 --------------------------------------------------------------------------------
 
+class (Concat l, NullableM m (BufferFor m l)) => Buffer m l | l -> m
+  where
+    type BufferFor m l :: Type
+    
+    unsafeFromBuffer :: BufferFor m l -> m l
+    
+    fromBuffer :: BufferFor m l -> m l
+    
+    appendBuffer :: BufferFor m l -> l -> m ()
+
+--------------------------------------------------------------------------------
+
+{- |
+  @since 0.3
+  
+  Monadic version of 'Concat'.
+-}
 class (Monad m, NullableM m l) => ConcatM m l | l -> m
   where
     {-# MINIMAL ((<~>)|concatM) #-}
@@ -87,4 +109,27 @@ instance Concat [e]
   where
     concat    = L.concat
     concatMap = L.concatMap
+
+--------------------------------------------------------------------------------
+
+{- |
+  @since 0.3
+  
+  Create resizable buffer for mutable structure.
+-}
+class (ConcatM m l, NullableM m (BufferForM m l)) => BufferM m l
+  where
+    -- | Buffer type
+    type BufferForM m l :: Type
+    
+    -- | Create a structure from given buffer, may reuse the buffer itself.
+    unsafeFromBufferM :: BufferForM m l -> m l
+    
+    -- | Create a structure from given buffer, can't reuse the buffer itself.
+    fromBufferM :: BufferForM m l -> m l
+    
+    -- | Append content of structure to existing buffer
+    appendBufferM :: BufferForM m l -> l -> m ()
+
+
 
