@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances #-}
 {-# LANGUAGE Safe, CPP, ConstraintKinds #-}
 
 #ifdef SDP_QUALIFIED_CONSTRAINTS
@@ -32,6 +32,7 @@ where
 
 import Prelude ()
 import SDP.SafePrelude
+import SDP.Sequence
 import SDP.Zip
 
 import qualified Data.List as L
@@ -41,7 +42,7 @@ default ()
 --------------------------------------------------------------------------------
 
 -- | 'Sort' is class of types that can be sorted.
-class Sort s e | s -> e
+class Sequence s e => Sort s e
   where
     {-# MINIMAL sortBy, sortedBy #-}
     
@@ -94,7 +95,6 @@ sort =  sortBy compare
 -- | Sort by comparing the results of a given function applied to each element.
 sortOn :: (Sort s e, Ord o) => (e -> o) -> s -> s
 sortOn =  sortBy . comparing
-
 
 
 

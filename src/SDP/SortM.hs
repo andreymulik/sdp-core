@@ -1,5 +1,4 @@
-{-# LANGUAGE Safe, CPP, MultiParamTypeClasses, FunctionalDependencies #-}
-{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE Safe, CPP, MultiParamTypeClasses, ConstraintKinds #-}
 
 #ifdef SDP_QUALIFIED_CONSTRAINTS
 {-# LANGUAGE QuantifiedConstraints, RankNTypes #-}
@@ -32,13 +31,14 @@ where
 
 import Prelude ()
 import SDP.SafePrelude
+import SDP.SequenceM
 
 default ()
 
 --------------------------------------------------------------------------------
 
 -- | 'SortM' is class of sortable mutable structures.
-class SortM m s e | s -> m, s -> e
+class SequenceM m s e => SortM m s e
   where
     {-# MINIMAL sortedMBy, sortMBy #-}
     
