@@ -7,7 +7,7 @@
 
 {- |
     Module      :  SDP.Estimate
-    Copyright   :  (c) Andrey Mulik 2019-2025
+    Copyright   :  (c) Andrey Mulik 2019-2026
     License     :  BSD-style
     Maintainer  :  work.a.mulik@gmail.com
     Portability :  non-portable (GHC extensions)
@@ -37,7 +37,7 @@ module SDP.Estimate
 #endif
   
   -- ** Right-side Estimate functions.
-  (<=.>), (<.), (>.), (<=.), (>=.), (==.), (/=.),
+  (<=.>), (<.), (>.), (<=.), (>=.), (==.), (/=.), (<=>>),
   
   -- * EstimateM
   EstimateM (..), EstimateM1, EstimateM2,
@@ -55,8 +55,7 @@ import SDP.Comparing
 import SDP.Index
 
 import Data.Functor.Classes
-
-import Control.Exception.SDP
+import Data.Functor
 
 default ()
 
@@ -65,7 +64,7 @@ infixl 4 <==>, .<., .>., .<=., .>=., .==., ./=.,
          <=.>, <., >., <=., >=., ==., /=.
 
 infixl 4 <<=>>, `shorterThanM`, `longerThanM`, `hasLengthM`, `otherLengthM`,
-         <=>>,  `noLongerThanM`, `notShorterThanM`
+    <=>>, <<=>, `noLongerThanM`, `noShorterThanM`
 
 --------------------------------------------------------------------------------
 
@@ -102,7 +101,7 @@ data SizeHint = SizeHint   {-# UNPACK #-} !Int {-# UNPACK #-} !Int
 -}
 class Estimate e
   where
-    {-# MINIMAL sizeOf, (<.=>), (<==>), shrinkTo #-}
+    {-# MINIMAL sizeOf, (<.=>), (<==>) #-}
     
     -- | Faster, but less precise version of 'SDP.Bordered.Bordered.sizeOf'.
     sizeHint :: e -> Maybe SizeHint
@@ -110,14 +109,6 @@ class Estimate e
     
     -- | Returns actual size of structure.
     sizeOf :: e -> Int
-    
-    {- |
-      @since 0.3
-      
-      @ss = shrinkTo n es@ returns @ss@ - slice of @es@ with @'sizeOf' ss <= n@
-      containing the first n elements (or less).
-    -}
-    shrinkTo :: Int -> e -> e
     
     -- | Compare structure length with given number.
     (<.=>) :: e -> Int -> Ordering
@@ -165,36 +156,26 @@ class Monad m => EstimateM m e
     getSizeOf :: e -> m Int
     getSizeOf =  return . sizeOf
     
-    {- |
-      @since 0.3
-      
-      @ss = shrinkMTo n es@ returns @ss@ - slice of @es@ with @'sizeOf' ss <= n@
-      containing the first n elements (or less).
-    -}
-    default shrinkMTo :: Estimate e => Int -> e -> m e
-    shrinkMTo :: Int -> e -> m e
-    shrinkMTo =  pure ... shrinkTo
-    
     -- | Compare pair of structures by length.
     default (<<=>>) :: Estimate e => e -> e -> m Ordering
     (<<=>>) :: e -> e -> m Ordering
     (<<=>>) =  return ... (<==>)
     
     -- | Compare structure length with given number.
-    default (<=>>) :: Estimate e => e -> Int -> m Ordering
-    (<=>>) :: e -> Int -> m Ordering
-    (<=>>) =  return ... (<.=>)
+    default (<<=>) :: Estimate e => e -> Int -> m Ordering
+    (<<=>) :: e -> Int -> m Ordering
+    (<<=>) =  return ... (<.=>)
     
     -- | Compare structure length with given number.
-    shorterThanM, longerThanM, noLongerThanM, notShorterThanM,
+    shorterThanM, longerThanM, noLongerThanM, noShorterThanM,
       hasLengthM, otherLengthM :: e -> Int -> m Bool
     
-    shorterThanM    e i = fmap (== LT) (e <=>> i)
-    longerThanM     e i = fmap (== GT) (e <=>> i)
-    noLongerThanM   e i = fmap (/= GT) (e <=>> i)
-    notShorterThanM e i = fmap (/= LT) (e <=>> i)
-    hasLengthM      e i = fmap (== EQ) (e <=>> i)
-    otherLengthM    e i = fmap (/= EQ) (e <=>> i)
+    shorterThanM   e i = fmap (== LT) (e <<=> i)
+    longerThanM    e i = fmap (== GT) (e <<=> i)
+    noLongerThanM  e i = fmap (/= GT) (e <<=> i)
+    noShorterThanM e i = fmap (/= LT) (e <<=> i)
+    hasLengthM     e i = fmap (== EQ) (e <<=> i)
+    otherLengthM   e i = fmap (/= EQ) (e <<=> i)
     
     -- | Compare pair of structures by length.
     estimateMLT, estimateMGT, estimateMLE, estimateMGE,
@@ -278,12 +259,6 @@ instance Index i => Estimate (i, i)
     sizeHint = Just . SizeHintEQ . size
     sizeOf   = size
     
-    shrinkTo n bnds@(l, _)
-      | isEmpty  bnds = bnds
-      |   n >. bnds   = expandEx bnds
-      |     n < 1     = defaultBounds 0
-      |     True      = (l, index bnds (n - 1))
-    
     (<==>) = on (<=>) size
     (.<=.) = on (<=)  size
     (.>=.) = on (>=)  size
@@ -302,20 +277,28 @@ instance (Monad m, Index i) => EstimateM m (i, i)
     getSizeHint = return . Just . SizeHintEQ . size
     
     (<<=>>) = return ... on (<=>) size
-    (<=>>)  = return ... (<=>) . size
+    (<<=>)  = return ... (<=>) . size
     
-    estimateMEQ = return ... on (==)  size
-    estimateMLE = return ... on (<=)  size
-    estimateMGE = return ... on (>=)  size
-    estimateMLT = return ... on (<)   size
-    estimateMGT = return ... on (>)   size
+    estimateMEQ = return ... on (==) size
+    estimateMLE = return ... on (<=) size
+    estimateMGE = return ... on (>=) size
+    estimateMLT = return ... on (<)  size
+    estimateMGT = return ... on (>)  size
     
-    hasLengthM      = return ... (==)  . size
-    otherLengthM    = return ... (/=)  . size
-    longerThanM     = return ... (>)   . size
-    shorterThanM    = return ... (<)   . size
-    noLongerThanM   = return ... (<=)  . size
-    notShorterThanM = return ... (>=)  . size
+    hasLengthM     = return ... (==) . size
+    otherLengthM   = return ... (/=) . size
+    longerThanM    = return ... (>)  . size
+    shorterThanM   = return ... (<)  . size
+    noLongerThanM  = return ... (<=) . size
+    noShorterThanM = return ... (>=) . size
+
+{- |
+  @since 0.3
+  
+  @('<=>>')@ is @('<=>>')@ right-side variant.
+-}
+(<=>>) :: EstimateM m e => Int -> e -> m Ordering
+n <=>> es = (es <<=> n) <&> \ o -> case o of {LT -> GT; EQ -> EQ; GT -> LT}
 
 --------------------------------------------------------------------------------
 
@@ -325,8 +308,6 @@ instance Estimate [a]
     
     sizeHint [] = Just (SizeHintEQ 0)
     sizeHint  _ = Just (SizeHintGE 1)
-    
-    shrinkTo = take
     
     [] <==> [] = EQ
     [] <==>  _ = LT
@@ -342,14 +323,8 @@ instance Monad m => EstimateM m [a]
     getSizeHint = return . sizeHint
     
     (<<=>>) = return ... (<==>)
-    (<=>>)  = return ... (<.=>)
+    (<<=>)  = return ... (<.=>)
 
---------------------------------------------------------------------------------
-
-expandEx :: Index i => (i, i) -> err
-expandEx bnds = throw . UnacceptableExpansion
-              . showString "in SDP.Bordered.eitherViewOf: new borders "
-              $ shows bnds " can't be wider than range of list values"
 
 
 
