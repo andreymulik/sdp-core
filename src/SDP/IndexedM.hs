@@ -60,15 +60,15 @@ class (LinearM m v e, BorderedM m v i, MapM m v i e) => IndexedM m v i e
       match with the result bounds (not always possible).
     -}
     fromAssocs :: (i, i) -> [(i, e)] -> m v
-    fromAssocs bnds = fromAssocs' bnds (undefEx "fromAssocs")
+    fromAssocs =  fromAssocs' (undefEx "fromAssocs")
     
     {- |
       @fromAssocs' bnds defvalue ascs@ creates new structure from list of
       associations, with default element. Note that @bnds@ is @ascs@ bounds and
       may not match with the result bounds (not always possible).
     -}
-    fromAssocs' :: (i, i) -> e -> [(i, e)] -> m v
-    fromAssocs' bnds def = newMap' def . filter (inRange bnds . fst)
+    fromAssocs' :: e -> (i, i) -> [(i, e)] -> m v
+    fromAssocs' def bnds = newMap' def . filter (inRange bnds . fst)
     
     -- | Just swap two elements.
     swapM' :: v -> i -> i -> m ()
@@ -151,7 +151,5 @@ type Thaw'' m v v' = forall i e . Thaw m (v i e) (v' i e)
 
 undefEx :: String -> e
 undefEx =  throw . UndefinedValue . showString "in SDP.IndexedM."
-
-
 
 
